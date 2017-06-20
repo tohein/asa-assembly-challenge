@@ -188,7 +188,34 @@ public class DBGraph {
 		}
 	}
 	
+	public boolean removeLowCoverageBlocks(boolean verbose, int cutoff) {
+		if (verbose) {
+			System.out.print("Removing low coverage blocks. ");
+		}
+		LinkedList<Block> blocksToRemove = new LinkedList<DBGraph.Block>();
+		for (Map.Entry<String, Block> entry : blocks.entrySet()) {
+			Block n = entry.getValue();
+			if (n.getCov() < cutoff) {			
+					blocksToRemove.add(n);
+			}
+		}
+		if (blocksToRemove.size() > 0) {
+			System.out.print("Graph size - before: " + this.getSize());
+			for (Block block : blocksToRemove) {
+				this.rmvBlock(block);
+			}
+			System.out.println(", after: " + this.getSize());
+			return true;
+		} else {
+			System.out.println("No changes");
+			return false;
+		}
+	}
+	
 	public boolean removeTips(boolean verbose, int cutoff) {
+		if (verbose) {
+			System.out.print("Removing Tips. ");
+		}
 		LinkedList<Block> blocksToRemove = new LinkedList<DBGraph.Block>();
 		for (Map.Entry<String, Block> entry : blocks.entrySet()) {
 			Block n = entry.getValue();
@@ -199,11 +226,14 @@ public class DBGraph {
 			}
 		}
 		if (blocksToRemove.size() > 0) {
+			System.out.print("Graph size - before: " + this.getSize());
 			for (Block block : blocksToRemove) {
 				this.rmvBlock(block);
 			}
+			System.out.println(", after: " + this.getSize());
 			return true;
 		} else {
+			System.out.println("No changes");
 			return false;
 		}
 	}
@@ -359,13 +389,15 @@ public class DBGraph {
 		return blocks.containsKey(s);
 	}
 	
-	public String[] getContigs(boolean includeRC, boolean verbose, boolean correctErrors, int cutoff) {
+	public String[] findContigs(boolean includeRC, boolean verbose, boolean correctErrors, int cutoff) {
 		boolean modified = true;
 		int iter = 0;
 		while (modified) {
 			boolean removed;
 			if (correctErrors) {
-				removed = this.removeTips(verbose, cutoff);
+				boolean removed1 = this.removeTips(verbose, cutoff);
+				boolean removed2 = this.removeLowCoverageBlocks(verbose, 5);
+				removed = removed1 || removed2;
 			} else {
 				removed = false;
 			}

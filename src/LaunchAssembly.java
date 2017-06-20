@@ -115,7 +115,7 @@ public class LaunchAssembly {
 		System.out.println("COUNTS "+min+" "+max);*/
 		
 		G = new DBGraph(inputs, k, true);		
-		String[] contigs = G.getContigs(true, true, true, 20);
+		String[] contigs = G.findContigs(true, true, true, 20);
 		
 		System.out.println("Max contig length: " + G.getMaxContig());
 		
