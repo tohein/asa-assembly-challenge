@@ -1,3 +1,5 @@
+import java.io.IOException;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 
 
@@ -58,7 +60,7 @@ public class LaunchAssembly {
 			// TODO Auto-generated catch block
 			e.printStackTrace();
 		}
-		int cutoff = 10;		
+		int cutoff = 20;		
 		System.out.print("Computing spectral alignment (cutoff = " + cutoff + ") ... ");
 		inputs = SeqUtils.spectralAlignment(inputs, cutoff, k);
 		G = new DBGraph(inputs, k, true);
@@ -78,6 +80,19 @@ public class LaunchAssembly {
 		long endTime = System.currentTimeMillis();
 		System.out.println("Read file in " + (endTime - startTime)/1000 + " seconds.");
 
+	/*	LinkedHashMap<String, Integer> kmers2 = SeqUtils.kmerCounts(inputs, 21);
+		int max = 0;
+		int min = inputs.length;
+		for (String s : kmers2.keySet()) {
+			if (kmers2.get(s) > max) {
+				max = kmers2.get(s);
+			}
+			if (kmers2.get(s) < min) {
+				min = kmers2.get(s);
+			}
+		}
+		System.out.println("COUNTS _ BEFORE "+min+" "+max);*/
+		
 		//inputs = Arrays.copyOfRange(inputs, 0, inputs.length); 
 		System.out.print("Computing spectral alignment (cutoff = " + cutoff + ") ... ");
 		startTime = System.currentTimeMillis();
@@ -86,17 +101,24 @@ public class LaunchAssembly {
 		System.out.println("done (" + (endTime - startTime)/1000 + " seconds).");
 		System.out.println("Number of reads: "+inputs.length);
 		
-		G = new DBGraph(inputs, k, true);	
-		//System.out.println(G.toString());
+	/*	LinkedHashMap<String, Integer> kmers3 = SeqUtils.kmerCounts(inputs, 21);
+		max = 0;
+		min = inputs.length;
+		for (String s : kmers3.keySet()) {
+			if (kmers3.get(s) > max) {
+				max = kmers3.get(s);
+			}
+			if (kmers3.get(s) < min) {
+				min = kmers3.get(s);
+			}
+		}
+		System.out.println("COUNTS "+min+" "+max);*/
 		
-		G.collapse(true);			
-		boolean collapsed = G.collapse(true);			
-		System.out.println(collapsed);		
-		//System.out.println(G.toString());	
+		G = new DBGraph(inputs, k, true);		
+		String[] contigs = G.getContigs(true, true, true, 20);
 		
-	
 		System.out.println("Max contig length: " + G.getMaxContig());
-/*		String[] contigs = G.getContigs(true);
+		
 		try {
 			SeqUtils.writeFasta("/home/tohei/Downloads/contigs.fasta", contigs);
 		} catch (IOException e) {
@@ -104,7 +126,7 @@ public class LaunchAssembly {
 			e.printStackTrace();
 		}
 		
-		String[] contigs2 = null;
+		/*String[] contigs2 = null;
 		try {			
 			//inputs = SeqUtils.readFasta("/home/tohei/Downloads/reads_simple_error.fasta");
 			contigs2 = SeqUtils.readFasta("/home/tohei/Downloads/reads_complex.unitigs.fa");

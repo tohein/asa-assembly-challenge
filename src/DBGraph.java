@@ -35,14 +35,14 @@ public class DBGraph {
 		private LinkedList<Block> outgoing;
 		private Block twin;
 		private String seq;
-		private int cov;
+		private int count;
 		private int mult;
 		
-		public Block(String seq, int cov, int mult) {
+		public Block(String seq, int count, int mult) {
 			outgoing = new LinkedList<Block>();
 			this.twin = null;
 			this.seq = seq;
-			this.cov = cov;
+			this.count = count;
 			this.mult = mult;
 		}
 		
@@ -99,6 +99,9 @@ public class DBGraph {
 			return seq.substring(k-1);
 		}
 		
+		public float getCov() {
+			return count/(float)mult;
+		}
 		@Override
 		public String toString() {
 			String twinSeq = "";
@@ -116,6 +119,7 @@ public class DBGraph {
 			s = s + "]";
 			return s;
 		}
+
 	}
 	
 	public int getSize() {
@@ -137,7 +141,7 @@ public class DBGraph {
 			System.out.print("Building de Bruijn graph from " + k 
 					+ "-mers of " + inputs.length + " reads ...");			
 		}
-		LinkedHashSet<String> kmers = SeqUtils.allKmers(inputs, k);
+		LinkedHashMap<String, Integer> kmers = SeqUtils.kmerCounts(inputs, k);
 		blocks = new LinkedHashMap<String, Block>(kmers.size());
 		this.k = k;
 
@@ -145,12 +149,17 @@ public class DBGraph {
 			System.out.print(" adding blocks ...");			
 		}
 		// add blocks 
-		for (String kmer : kmers) {
+		for (String kmer : kmers.keySet()) {
 			String kmerRC = SeqUtils.reverseComplement(kmer);
+			// TODO count kmers and their complements separately
+			int count = kmers.get(kmer);
+			if (kmers.containsKey(kmerRC)) {
+				count += kmers.get(kmerRC);
+			}
 			Block n1; Block n2;
 			if (!blocks.containsKey(kmer)) {				
-				n1 = new Block(kmer);
-				n2 = new Block(kmerRC);
+				n1 = new Block(kmer, count, 1);
+				n2 = new Block(kmerRC, count, 1);
 				n1.twin = n2;
 				n2.twin = n1;
 				
@@ -179,6 +188,36 @@ public class DBGraph {
 		}
 	}
 	
+	public boolean removeTips(boolean verbose, int cutoff) {
+		LinkedList<Block> blocksToRemove = new LinkedList<DBGraph.Block>();
+		for (Map.Entry<String, Block> entry : blocks.entrySet()) {
+			Block n = entry.getValue();
+			if ((n.getSeq().length() < 2*k) && (n.getCov() < cutoff)) {			
+				if (n.getIndegree() == 0 || n.getOutdegree() == 0) {
+					blocksToRemove.add(n);
+				}
+			}
+		}
+		if (blocksToRemove.size() > 0) {
+			for (Block block : blocksToRemove) {
+				this.rmvBlock(block);
+			}
+			return true;
+		} else {
+			return false;
+		}
+	}
+	
+	private void rmvBlock(Block n) {
+		for (Block block : n.outgoing) {
+			block.twin.rmvOutgoing(n.twin);
+		}
+		for (Block block : n.twin.outgoing) {
+			block.twin.rmvOutgoing(n);
+		}
+		blocks.remove(n.getSeq());
+		blocks.remove(n.getRCSeq());		
+	}
 	
 	public boolean collapse(boolean verbose) {
 		long startTime = System.currentTimeMillis();
@@ -246,15 +285,19 @@ public class DBGraph {
 		Block last = linearStretch.getLast();
 		
 		String shortSeq = "";
+		int count = 0;
+		int mult = 0;
 		for (Block block : linearStretch) {
+			count = count + block.count;
+			mult = mult + block.mult;
 			if (block == first) continue;
 			shortSeq = shortSeq +  block.getShortSeq();
 		}
 		String shortSeqRC = SeqUtils.reverseComplement(shortSeq);
 		String newSeq = first.getSeq() + shortSeq;
 		String newSeqRC = shortSeqRC + first.getRCSeq();
-		Block newBlock = new Block(newSeq);
-		Block newTwin = new Block(newSeqRC);
+		Block newBlock = new Block(newSeq, count, mult);
+		Block newTwin = new Block(newSeqRC, count, mult);
 		newBlock.twin = newTwin;
 		newTwin.twin = newBlock;
 
@@ -316,7 +359,23 @@ public class DBGraph {
 		return blocks.containsKey(s);
 	}
 	
-	public String[] getContigs(boolean includeRC) {
+	public String[] getContigs(boolean includeRC, boolean verbose, boolean correctErrors, int cutoff) {
+		boolean modified = true;
+		int iter = 0;
+		while (modified) {
+			boolean removed;
+			if (correctErrors) {
+				removed = this.removeTips(verbose, cutoff);
+			} else {
+				removed = false;
+			}
+			boolean collapsed = this.collapse(verbose);
+			modified = removed || collapsed;
+			iter++;
+			if (verbose) {
+				System.out.println("Iterations: "+ iter);
+			}
+		}
 		LinkedHashSet<String> visited = new LinkedHashSet<String>(blocks.size());
 		String[] contigs = null;
 		if (includeRC) {
@@ -345,6 +404,16 @@ public class DBGraph {
 		int max = 0;
 		for (String seq: blocks.keySet()) {
 			if (seq.length() > max) {
+				max = seq.length();
+			}
+		}
+		return max;
+	}
+	
+	public int getMaxCount() {
+		int max = 0;
+		for (String seq: blocks.keySet()) {
+			if (blocks.get(seq).count > max) {
 				max = seq.length();
 			}
 		}
