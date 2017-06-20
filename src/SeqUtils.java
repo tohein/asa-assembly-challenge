@@ -106,6 +106,23 @@ public final class SeqUtils {
 		}
 		return extB;
 	}
+	
+	/**
+	 * Compute four extensions of input string s by adding one 
+	 * additional base ('A', 'T', 'G', 'C') to the beginning of s.
+	 * <p>
+	 * @param s input sequence.
+	 * @return String array of length 4 containing extensions.
+	 */
+	public static String[] extendFront(String s) {
+		String[] extF = new String[COMPLEMENTS.size()];
+		int k = 0;
+		for (char c : COMPLEMENTS.keySet()) {
+			extF[k] = c + s;
+			k++;
+		}
+		return extF;
+	}
 		
 	/**
 	 * Reads in a FASTA file and returns reads in a string array.
@@ -165,9 +182,13 @@ public final class SeqUtils {
 	 * @param cutoff integer threshold for coverage cutoff. Every k-mer with
 	 * lower coverage will be replaced by its best Hamming neighbor.
 	 * @param k k-mer length.
+	 * @param verbose be verbose.
 	 * @return String array of error corrected reads.
 	 */
-	public static String[] spectralAlignment(String[]reads, int cutoff, int k) {
+	public static String[] spectralAlignment(String[]reads, int cutoff, int k, boolean verbose) {
+		long startTime = System.currentTimeMillis();
+		if (verbose) System.out.print("Computing spectral alignment (cutoff = " + cutoff + ") ... ");
+
 		LinkedHashMap<String, Integer> kmerCounts = kmerCounts(reads, k);
 		int numOfReplacements = 0;
 		for (int i = 0; i < reads.length; i++) {
@@ -181,7 +202,11 @@ public final class SeqUtils {
 				}
 			}
 		}
-		System.out.println("(Total of " + numOfReplacements + " replacements)");
+		if (verbose) {
+			long endTime = System.currentTimeMillis();
+			System.out.println("done (" + (endTime - startTime)/1000 + " seconds).");
+			System.out.println("(Total of " + numOfReplacements + " replacements)");
+		}
 		return reads;
 		
 	}

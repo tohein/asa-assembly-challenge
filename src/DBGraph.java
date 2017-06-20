@@ -138,7 +138,7 @@ public class DBGraph {
 
 		long startTime = System.currentTimeMillis();
 		if (verbose) {
-			System.out.print("Building de Bruijn graph from " + k 
+			System.out.println("Building de Bruijn graph from " + k 
 					+ "-mers of " + inputs.length + " reads ...");			
 		}
 		LinkedHashMap<String, Integer> kmers = SeqUtils.kmerCounts(inputs, k);
@@ -146,7 +146,7 @@ public class DBGraph {
 		this.k = k;
 
 		if (verbose) {
-			System.out.print(" adding blocks ...");			
+			System.out.println(" adding nodes ... ");
 		}
 		// add blocks 
 		for (String kmer : kmers.keySet()) {
@@ -168,7 +168,7 @@ public class DBGraph {
 			}
 		}		
 		if (verbose) {
-			System.out.print(" adding edges ...");			
+			System.out.println(" adding edges ... ");
 		}
 		// add edges
 		for (Map.Entry<String, Block> entry : blocks.entrySet()) {
@@ -183,8 +183,8 @@ public class DBGraph {
 		}
 		if (verbose) {
 			long endTime = System.currentTimeMillis();
-			System.out.print(" done (" + (endTime - startTime)/1000 + 
-					" seconds).\nTotal of " + getSize() + " blocks.\n");			
+			System.out.println("done (" + (endTime - startTime)/1000 + 
+					" seconds). " + getSize() + " nodes.\n");			
 		}
 	}
 	
@@ -281,8 +281,12 @@ public class DBGraph {
 		}
 		if (verbose) {
 			long endTime = System.currentTimeMillis();
-			System.out.println("Collapsed de Bruijn graph in " + (endTime - startTime)/1000 + 
-					" seconds. Graph size - before: "+blocksPriorCollapse+", after: "+getSize());
+			System.out.print("Collapsed de Bruijn graph (" + (endTime - startTime)/1000 + " seconds). ");
+			if (collapsed) {
+				System.out.println("Graph size - before: "+blocksPriorCollapse+", after: "+getSize());
+			} else {
+				System.out.println("No changes.");
+			}
 		}
 		return collapsed;
 	}
@@ -390,23 +394,29 @@ public class DBGraph {
 	}
 	
 	public String[] findContigs(boolean includeRC, boolean verbose, boolean correctErrors, int cutoff) {
+		if (verbose) {
+			String s = null;
+			if (correctErrors) s = "with";
+			else s = "without";
+			System.out.println("Computing contigs "+s+" error correction ... ");
+		}
 		boolean modified = true;
-		int iter = 0;
+		int iter = 1;
 		while (modified) {
+			if (verbose) {
+				System.out.println("------------- Iteration "+ iter + " -------------");
+			}
 			boolean removed;
 			if (correctErrors) {
 				boolean removed1 = this.removeTips(verbose, cutoff);
-				boolean removed2 = this.removeLowCoverageBlocks(verbose, 5);
+				boolean removed2 = this.removeLowCoverageBlocks(verbose, cutoff);
 				removed = removed1 || removed2;
 			} else {
 				removed = false;
 			}
 			boolean collapsed = this.collapse(verbose);
 			modified = removed || collapsed;
-			iter++;
-			if (verbose) {
-				System.out.println("Iterations: "+ iter);
-			}
+			iter++;			
 		}
 		LinkedHashSet<String> visited = new LinkedHashSet<String>(blocks.size());
 		String[] contigs = null;
