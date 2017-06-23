@@ -5,7 +5,7 @@ import java.util.LinkedHashSet;
 public class LaunchAssembly {
 	
 	public static void main(String args[]) {
-		boolean verbose = true;
+		//boolean verbose = true;
 		
 		if (args.length == 0) {
 			System.out.println("Assembly Challenge - de novo assembly using de Bruijn graphs in Java");
@@ -74,17 +74,54 @@ public class LaunchAssembly {
 			if (!hasEdge) System.out.println("None");
 			System.out.println();
 		}
-		
-		int cutoff = 10;
+
+
+		int[] cutoff1 = {10};
+		int[] cutoff2 = {1,2,3,4,5,7,10,15};
+		int maxContigLength = 0;
+		int topc1 = -1;
+		int topc2 = -1;
+
+		// save k-mer counts
+		try {
+			String countfile = "/home/tohei/Downloads/counts.txt";
+			System.out.println(countfile);
+			SeqUtils.saveKmerCounts(countfile, SeqUtils.kmerCounts(inputs, 21));
+		} catch (IOException e) {
+			e.printStackTrace();
+		}
+
 		// correct reads
-		inputs = SeqUtils.spectralAlignment(inputs, cutoff, k, verbose);
-		// compute contigs
+		inputs = SeqUtils.spectralAlignment(inputs, 30, k, true);
+
+		// find best parameter settings
+		System.out.println("Testing different paramters ... ");
+		for (int i = 0; i < cutoff1.length; i++) {
+			for (int j = 0; j < cutoff2.length; j++) {
+				System.out.println("Cutoffs: " + cutoff1[i] + " (rmv tips), " + cutoff2[j] + " (rmv low cov).");
+				DBGraph G = new DBGraph(inputs, k, false);
+				String[] contigs = G.findContigs(true, false, true, cutoff1[i], cutoff2[j]);
+				System.out.println();
+				int max = G.getMaxContig();
+				System.out.println("Max contig length: " + max);
+				System.out.println();
+				if (max > maxContigLength) {
+					maxContigLength = max;
+					topc1 = i;
+					topc2 = j;
+				}
+			}
+		}
+		// repeat for best parameters
+		System.out.println("Top parameters: " + cutoff1[topc1] + " (rmv tips), " + cutoff2[topc2] + " (rmv low cov).");
+		DBGraph G = new DBGraph(inputs, k, true);
+		String[] contigs = G.findContigs(true, true, true, cutoff1[topc1], cutoff2[topc2]);
 		System.out.println();
-		DBGraph G = new DBGraph(inputs, k, true);		
-		String[] contigs = G.findContigs(true, true, true, cutoff);		
+		int max = G.getMaxContig();
+		System.out.println("Max contig length: " + max);
 		System.out.println();
-		System.out.println("Max contig length: " + G.getMaxContig());
-		System.out.println();
+
+		// save
 		System.out.print("Saving to " + outputFile + " ... ");
 		try {
 			SeqUtils.writeFasta(outputFile, contigs);
