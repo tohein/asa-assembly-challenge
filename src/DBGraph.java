@@ -444,7 +444,7 @@ public class DBGraph {
         return contigs;
     }
 
-    public int getMaxContig() {
+    public int getMaxContigLength() {
         int max = 0;
         for (String seq : blocks.keySet()) {
             if (seq.length() > max) {
@@ -452,6 +452,14 @@ public class DBGraph {
             }
         }
         return max;
+    }
+
+    public float getAvgContigLength() {
+        int sum = 0;
+        for (String seq : blocks.keySet()) {
+                sum += seq.length();
+        }
+        return (float)sum/blocks.size();
     }
 
     public int getMaxCount() {
