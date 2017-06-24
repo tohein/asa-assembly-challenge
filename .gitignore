@@ -3,3 +3,6 @@ data/
 .settings/
 .classpath
 .project
+.idea/
+out/
+AssemblyChallenge.iml

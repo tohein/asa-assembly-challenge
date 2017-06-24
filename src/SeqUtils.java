@@ -85,7 +85,7 @@ public final class SeqUtils {
             if (countRC) {
                 // updated contains all k-mers found in reverse complement of s
                 String sRC = reverseComplement(s);
-                LinkedHashSet<String> updated = new LinkedHashSet<String>();
+                updated = new LinkedHashSet<String>();
                 for (int i = 0; i < sRC.length() - k + 1; i++) {
                     String kmer = sRC.substring(i, i + k);
                     if (!updated.contains(kmer)) {
@@ -273,30 +273,4 @@ public final class SeqUtils {
 		}
 		return bestSeq;
 	}
-
-	public static string[] localizedErrorCorrection(String[] reads, int k, boolean verbose) {
-        long startTime = System.currentTimeMillis();
-        if (verbose) System.out.print("Computing localized error correction ... ");
-
-        int cutoff = 1;
-        LinkedHashMap<String, Integer> kmerCounts = kmerCounts(reads, k);
-        int numOfReplacements = 0;
-        for (int i = 0; i < reads.length; i++) {
-            String read = reads[i];
-            for (int j = 0; j < read.length() - k + 1; j++) {
-                String v = read.substring(j, j + k);
-                if (kmerCounts.get(v) <= cutoff) {
-                    numOfReplacements ++;
-                    //System.out.println("Low cov string " + v);
-                    reads[i] = read.substring(0, j) + bestHammingNeighbor(v, cutoff, kmerCounts) + read.substring(j + k);
-                }
-            }
-        }
-        if (verbose) {
-            long endTime = System.currentTimeMillis();
-            System.out.println("done (" + (endTime - startTime)/1000 + " seconds).");
-            System.out.println("(Total of " + numOfReplacements + " replacements)");
-        }
-        return reads;
-    }
 }
