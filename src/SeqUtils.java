@@ -43,7 +43,7 @@ public final class SeqUtils {
 		}
 		return kmers;
 	}
-	
+
 	/**
 	 * Computes for every k-mer m the  number of reads which
 	 * contain m. 
@@ -115,6 +115,16 @@ public final class SeqUtils {
 		}
 		return revComp;
 	}
+
+    /**
+     * Compute the complement of a character.
+     * <p>
+     * @param c One of 'A', 'T', 'G', 'C'.
+     * @return Complement of input string.
+     */
+    public static char complement(char c) {
+        return COMPLEMENTS.get(c);
+    }
 	
 	/**
 	 * Compute four extensions of input string s by adding one 
@@ -229,7 +239,7 @@ public final class SeqUtils {
 		long startTime = System.currentTimeMillis();
 		if (verbose) System.out.print("Computing spectral alignment (cutoff = " + cutoff + ") ... ");
 
-		LinkedHashMap<String, Integer> kmerCounts = kmerCounts(reads, k);
+		LinkedHashMap<String, Integer> kmerCounts = kmerCounts(reads, k, true);
 		int numOfReplacements = 0;
 		for (int i = 0; i < reads.length; i++) {
 			String read = reads[i];
