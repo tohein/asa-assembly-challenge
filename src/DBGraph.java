@@ -190,6 +190,10 @@ public class DBGraph {
         }
     }
 
+    public boolean mergeBubbles(boolean verbose) {
+        return false;
+    }
+
     public boolean removeLowCoverageBlocks(boolean verbose, int cutoff) {
         if (verbose) {
             System.out.print("Removing low coverage blocks. ");
@@ -395,31 +399,30 @@ public class DBGraph {
         return blocks.containsKey(s);
     }
 
-    public String[] findContigs(boolean includeRC, boolean verbose, boolean correctErrors, int cutoff1, int cutoff2) {
+    public void simplify(boolean verbose, boolean correctErrors, int cutoffTips, int cutoffCov) {
         if (verbose) {
             String s = null;
             if (correctErrors) s = "with";
             else s = "without";
-            System.out.println("Computing contigs " + s + " error correction ... ");
+            System.out.println("Computing contigs " + s + " error correction:");
         }
-        boolean modified = true;
         int iter = 1;
+        boolean modified = true;
+
         while (modified) {
             if (verbose) {
-                System.out.println("------------- Iteration " + iter + " -------------");
+                System.out.println("\t------------- Iteration " + iter + " -------------");
             }
-            boolean removed;
+            modified = this.collapse(verbose);
             if (correctErrors) {
-                boolean removed1 = this.removeTips(verbose, cutoff1);
-                boolean removed2 = this.removeLowCoverageBlocks(verbose, cutoff2);
-                removed = removed1 || removed2;
-            } else {
-                removed = false;
+                modified = this.removeTips(verbose, cutoffTips) || modified;
+                modified = this.removeLowCoverageBlocks(verbose, cutoffCov) || modified;
             }
-            boolean collapsed = this.collapse(verbose);
-            modified = removed || collapsed;
             iter++;
         }
+    }
+
+    public String[] getContigs(boolean includeRC) {
         LinkedHashSet<String> visited = new LinkedHashSet<String>(blocks.size());
         String[] contigs = null;
         if (includeRC) {
