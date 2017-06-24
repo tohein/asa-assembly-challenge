@@ -1,3 +1,4 @@
+import java.io.IOException;
 import java.util.LinkedHashMap;
 
 /**
@@ -13,6 +14,7 @@ public class MACorrector {
     public MACorrector(int k) {
         this.k = k;
     }
+    public MACorrector(){}
 
     public void setReads(String[] reads, int k) {
         this.k = k;
@@ -21,7 +23,7 @@ public class MACorrector {
 
     public void setReads(String[] reads) {
         this.reads = reads;
-        kmerCounts = SeqUtils.kmerCounts(reads, k, true);
+        kmerCounts = SeqUtils.kmerCounts(reads, k, false);
     }
 
     public void setCutoff(int cutoff) {
@@ -35,6 +37,9 @@ public class MACorrector {
         public ReplacementList(int length) {
             this.length = length;
             this.candidateReplacements = new LinkedHashMap[length];
+            for (int i = 0; i < length; i++) {
+                this.candidateReplacements[i] = new LinkedHashMap<Character, Integer>();
+            }
         }
 
         public void addCandidate(int pos, char c) {
@@ -70,9 +75,8 @@ public class MACorrector {
     public String[] correctReads(boolean verbose) {
         long startTime = System.currentTimeMillis();
         if (verbose) System.out.print("Computing majority alignment (cutoff = " + cutoff + ") ... ");
+        int numOfRepl = 0;
 
-
-        int numOfReplacements = 0;
         for (int i = 0; i < reads.length; i++) {
             String read = reads[i];
             ReplacementList cand = new ReplacementList(read.length());
@@ -86,11 +90,16 @@ public class MACorrector {
                 }
             }
             reads[i] = cand.getMajorityReplacement();
+            if (verbose) {
+                if (!read.equals(reads[i])) {
+                    numOfRepl ++;
+                }
+            }
         }
         if (verbose) {
             long endTime = System.currentTimeMillis();
             System.out.println("done (" + (endTime - startTime)/1000 + " seconds).");
-            System.out.println("(Total of " + numOfReplacements + " replacements)");
+            System.out.println(numOfRepl + " of " + reads.length + " reads were corrected.");
         }
         return reads;
     }
@@ -115,4 +124,20 @@ public class MACorrector {
         }
         return bestSeq;
     }
+
+    public static void main(String[] args) {
+        String[] reads = null;
+        try {
+            reads = SeqUtils.readFasta("/home/tohei/Data/ASAData/reads_complex.fasta");
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+        MACorrector mac  = new MACorrector();
+        System.out.print("Counting k-mers ... ");
+        mac.setReads(reads, 21);
+        System.out.println("done.");
+        mac.setCutoff(10);
+        mac.correctReads(true);
+    }
+
 }

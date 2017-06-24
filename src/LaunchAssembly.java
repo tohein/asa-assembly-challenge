@@ -75,22 +75,20 @@ public class LaunchAssembly {
 			System.out.println();
 		}
 
+		// save k-mer counts
+		/*try {
+			String countfile = "/home/tohei/Downloads/counts.txt";
+			System.out.println(countfile);
+			SeqUtils.saveKmerCounts(countfile, SeqUtils.kmerCounts(inputs, k));
+		} catch (IOException e) {
+			e.printStackTrace();
+		}*/
 
-		int[] cutoff1 = {10};
+		/*int[] cutoff1 = {10};
 		int[] cutoff2 = {1,2,3,4,5,7,10,15};
 		int maxContigLength = 0;
 		int topc1 = -1;
 		int topc2 = -1;
-
-		// save k-mer counts
-		try {
-			String countfile = "/home/tohei/Downloads/counts.txt";
-			System.out.println(countfile);
-			SeqUtils.saveKmerCounts(countfile, SeqUtils.kmerCounts(inputs, 21));
-		} catch (IOException e) {
-			e.printStackTrace();
-		}
-
 		// correct reads
 		inputs = SeqUtils.spectralAlignment(inputs, 30, k, true);
 
@@ -116,6 +114,19 @@ public class LaunchAssembly {
 		System.out.println("Top parameters: " + cutoff1[topc1] + " (rmv tips), " + cutoff2[topc2] + " (rmv low cov).");
 		DBGraph G = new DBGraph(inputs, k, true);
 		String[] contigs = G.findContigs(true, true, true, cutoff1[topc1], cutoff2[topc2]);
+		System.out.println();
+		int max = G.getMaxContig();
+		System.out.println("Max contig length: " + max);
+		System.out.println();*/
+
+		MACorrector mac  = new MACorrector();
+		mac.setReads(inputs, k);
+		mac.setCutoff(2);
+		inputs = mac.correctReads(true);
+		inputs = SeqUtils.spectralAlignment(inputs, 3, k, true);
+
+		DBGraph G = new DBGraph(inputs, k, true);
+		String[] contigs = G.findContigs(true, true, true, 10, 2);
 		System.out.println();
 		int max = G.getMaxContig();
 		System.out.println("Max contig length: " + max);
