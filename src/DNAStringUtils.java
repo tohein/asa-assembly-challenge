@@ -4,7 +4,7 @@ import java.io.FileReader;
 import java.io.IOException;
 import java.io.PrintWriter;
 import java.util.*;
-
+import static java.lang.Math.min;
 
 /**
  * Various utility functions for reading, writing and processing
@@ -97,7 +97,7 @@ public final class DNAStringUtils {
             DNAString seq = reads[i];
             // each line of a sequence should have fewer than 80 characters
             for (int j = 0; j < seq.length(); j += MAX_LENGTH) {
-                writer.println(seq.subSequence(j, Math.min(seq.length(), j + MAX_LENGTH)).toString());
+                writer.println(seq.subSequence(j, min(seq.length(), j + MAX_LENGTH)).toString());
             }
         }
         writer.close();
@@ -118,10 +118,57 @@ public final class DNAStringUtils {
         writer.close();
     }
 
+    /**
+     * Compute the Levenshtein distance between two DNAStrings.
+     * @param s1 first input DNAString.
+     * @param s2 second input DNAString.
+     * @return Levenstein distance between s1 and s2.
+     */
+    public static int LevDistance(DNAString s1, DNAString s2) {
+        int len1 = s1.length();
+        int len2 = s2.length();
+
+        int[][] D = new int[len1 + 1][len2 + 1];
+
+        for (int i = 0; i < len1 + 1; i++) {
+            D[i][0] = i;
+        }
+        for (int j = 0; j < len2 + 1; j++) {
+            D[0][j] = j;
+        }
+
+        for (int i = 0; i < len1; i++) {
+            byte b1 = s1.byteAt(i);
+            for (int j = 0; j < len2; j++) {
+                byte b2 = s2.byteAt(j);
+                if (b1 == b2) {
+                    D[i + 1][j + 1] = D[i][j];
+                } else {
+                    // replacement and insertion
+                    D[i + 1][j + 1] = min(D[i][j] + 1, D[i][j + 1] + 1);
+                    // deletion
+                    D[i + 1][j + 1] = min(D[i + 1][j + 1], D[i + 1][j] + 1);
+                }
+            }
+        }
+        return D[len1][len2];
+    }
+
     public static void main(String[] args) {
-        LinkedHashSet<DNAString> updated = new LinkedHashSet<DNAString>();
-        String s = "ACGTA";
-        DNAString[] seq = {new DNAString(s)};
-        System.out.println(kmerCounts(seq, 3).toString());
+        DNAString[] inputs = null;
+        try {
+            inputs = readFasta("/home/tohei/Data/ASAData/reads_complex.fasta");
+        } catch (FileNotFoundException e1) {
+            System.err.println("Could not find input file.");
+        } catch (IOException e2) {
+            System.err.println("Failed to read input file.");
+        }
+        int k = 21;
+        LinkedHashMap<DNAString, Integer> counts = kmerCounts(inputs, k);
+        System.out.println(counts.get(new DNAString("TGGCAGCTATCCTTCCGCTTT")));
+        DNAString weird = new DNAString("TGGCAGCTATTAAGATGTTAA");
+        System.out.println(counts.get(weird));
+        System.out.println(counts.get(weird.reverseComplement()));
+
     }
 }
