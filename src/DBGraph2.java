@@ -5,6 +5,8 @@ import java.util.LinkedHashSet;
 import java.util.LinkedList;
 import java.util.Map;
 
+import static java.lang.Math.min;
+
 /**
  * Simple implementation of a de Brujin graph for
  * sequence assembly.
@@ -377,6 +379,67 @@ public class DBGraph2 {
         return nodesMap.containsKey(s);
     }
 
+
+
+
+
+
+    public boolean removeBubbles(boolean verbose) {
+        long startTime = System.currentTimeMillis();
+        int blocksPriorCollapse = this.getSize();
+
+        if (verbose) {
+            System.out.print("Removing low coverage nodes. ");
+        }
+        LinkedList<DBGNode> startingNodes = new LinkedList<DBGNode>();
+        for (DNAString nodeSeq : nodesMap.keySet()) {
+            DBGNode n = nodesMap.get(nodeSeq);
+            if (n.getOutdegree() == 2) {
+                DBGNode neighbor1 = n.outgoing.getFirst().target;
+                DBGNode neighbor2 = n.outgoing.getLast().target;
+                if (neighbor1.getIndegree() == 1 && neighbor1.getOutdegree() == 1) {
+                    if (neighbor2.getIndegree() == 1 && neighbor2.getOutdegree() == 1) {
+                        if (neighbor1.outgoing.getFirst().target == neighbor2.outgoing.getFirst().target) {
+                            startingNodes.add(n);
+                        }
+                    }
+                }
+            }
+        }
+        if (verbose) {
+            System.out.println("Removing bubbles. Number of starting nodes: " + startingNodes.size());
+        }
+        boolean bubbleCollapsed = false;
+        for (DBGNode start : startingNodes) {
+            if (start.getOutdegree() == 2) {
+                bubbleCollapsed = removeSimpleBubble(start) || bubbleCollapsed;
+            }
+        }
+        if (verbose) {
+            long endTime = System.currentTimeMillis();
+            System.out.print(" Removed bubbles (" + (endTime - startTime) / 1000 + " seconds). ");
+            if (bubbleCollapsed) {
+                System.out.println("Graph size - before: " + blocksPriorCollapse + ", after: " + getSize());
+            } else {
+                System.out.println("No changes.");
+            }
+        }
+        return bubbleCollapsed;
+    }
+
+    public boolean removeSimpleBubble(DBGNode start) {
+        DBGNode top = start.outgoing.getFirst().target;
+        DBGNode bot = start.outgoing.getLast().target;
+        int maxDist = (int)(0.1 * min(top.seq.length(), bot.seq.length()));
+        if (DNAStringUtils.LevDistance(top.seq, bot.seq) < maxDist) {
+            DBGNode nodeToRemove = top.getCov() < bot.getCov() ? top : bot;
+            removeBlock(nodeToRemove);
+            return true;
+        } else {
+            return false;
+        }
+    }
+
     /**
      * Remove low coverage nodes and their twins (chimeric connections).
      *
@@ -427,8 +490,7 @@ public class DBGraph2 {
         LinkedList<DBGNode> blocksToRemove = new LinkedList<DBGNode>();
         for (DNAString nodeSeq : nodesMap.keySet()) {
             DBGNode n = nodesMap.get(nodeSeq);
-            //if ((n.seq.length() < 2 * k) && (n.getCov() < cutoff)) {
-            if (n.seq.length() < 2 * k) {
+            if (n.seq.length() < 2 * k) { // probably one case is sufficient
                 if (n.getIndegree() == 0 && n.getOutdegree() == 1) {
                     DBGEdge pathFromTip = n.outgoing.getFirst();
                     for (DBGEdge edge : pathFromTip.target.outgoing) {
@@ -488,7 +550,7 @@ public class DBGraph2 {
             }
         }
         if (verbose) {
-            System.out.println("Collapsing graph. Number of starting nodesMap: " + startingBlocks.size());
+            System.out.println("Collapsing graph. Number of starting nodes: " + startingBlocks.size());
         }
         boolean collapsed = false;
         for (DBGNode start : startingBlocks) {
@@ -498,7 +560,7 @@ public class DBGraph2 {
         }
         if (verbose) {
             long endTime = System.currentTimeMillis();
-            System.out.print("Collapsed de Bruijn graph (" + (endTime - startTime) / 1000 + " seconds). ");
+            System.out.print(" Collapsed de Bruijn graph (" + (endTime - startTime) / 1000 + " seconds). ");
             if (collapsed) {
                 System.out.println("Graph size - before: " + blocksPriorCollapse + ", after: " + getSize());
             } else {
@@ -556,7 +618,7 @@ public class DBGraph2 {
         }
         DNAString shortSeqRC = shortSeq.reverseComplement();
         DNAString newSeq = first.seq.concat(shortSeq);
-        DNAString newSeqRC = shortSeqRC.concat(first.seq);
+        DNAString newSeqRC = shortSeqRC.concat(first.twin.seq);
 
         DBGNode newNode = new DBGNode(newSeq, count);
         DBGNode newTwin = new DBGNode(newSeqRC, count);
@@ -608,7 +670,8 @@ public class DBGraph2 {
             }
             modified = this.collapse(verbose);
             if (correctErrors) {
-                modified = this.removeTips(verbose) || modified;
+                //modified = this.removeTips(verbose) || modified;
+                //modified = this.removeBubbles(verbose) || modified;
                 modified = this.removeLowCoverageBlocks(cutoffCov, verbose) || modified;
             }
             iter++;
@@ -731,7 +794,9 @@ public class DBGraph2 {
         rcor.computeSAC(true);
 
         DBGraph2 G = new DBGraph2(inputs, rcor.getCounts(), k, true);
-        G.simplify(true, 2, true);
+        System.out.println(G.contains(new DNAString("TGGCAGCTATCCTTCCGCTTT")));
+
+        G.simplify(false, 2, true);
         DNAString[] contigs = G.getSequences(true);
 
         System.out.println();
