@@ -1,7 +1,6 @@
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
 
 public class LaunchAssembly {
 
@@ -94,7 +93,7 @@ public class LaunchAssembly {
         rcor.setCutoff(2);
         rcor.computeSAC(verbose);
 
-        DBGraph2 G = new DBGraph2(inputs, rcor.getCounts(), k, verbose);
+        DBGraph G = new DBGraph(inputs, rcor.getCounts(), k, verbose);
 
         G.simplify(true, 2, verbose);
         DNAString[] contigs = G.getSequences(true);

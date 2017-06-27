@@ -1,9 +1,11 @@
+import java.io.FileNotFoundException;
+import java.io.IOException;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.LinkedList;
 import java.util.Map;
-import java.util.NoSuchElementException;
 
+import static java.lang.Math.min;
 
 /**
  * Simple implementation of a de Brujin graph for
@@ -13,43 +15,64 @@ import java.util.NoSuchElementException;
  * @author tohei
  */
 public class DBGraph {
+
     /**
-     * Stores all blocks in the graph.
+     * Stores all nodesMap in the graph.
      */
-    private LinkedHashMap<String, Block> blocks;
+    private LinkedHashMap<DNAString, DBGNode> nodesMap;
+
     /**
      * k-mer size
      */
     private int k;
 
-    // TODO figure out a way to store short sequences
+    ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
     /**
-     * Blocks are nodes in the de Bruijn graph.
-     * Every block corresponds to a k-mer or a simplified node
-     * and stores a pointer to its twin block (reverse complement).
+     * Nodes in the de Bruijn graph.
+     * <p>
+     * Every node corresponds to a k-mer or a simplified linear stretch.
+     * and stores a pointer to its twin block (reverse complement). The duality of nodes edges
+     * leads to a bipartite graph.
      *
      * @author tohei
      */
-    private class Block {
-        private LinkedList<Block> outgoing;
-        private Block twin;
-        private String seq;
+    private class DBGNode {
+        /**
+         * outgoing edges (incoming edges are parallel to the outgoing edges of the twin node)
+         */
+        private LinkedList<DBGEdge> outgoing;
+        /**
+         * twin node
+         */
+        private DBGNode twin;
+        /**
+         * node sequence
+         */
+        private DNAString seq;
+        /**
+         * coverage
+         */
         private int count;
-        private int mult;
 
-        public Block(String seq, int count, int mult) {
-            outgoing = new LinkedList<Block>();
+        /**
+         * Create new DBGNode from a sequence and its read count.
+         *
+         * @param seq   sequence to store in the new node.
+         * @param count number of reads containing any of the k-mers represented in this node.
+         */
+        public DBGNode(DNAString seq, int count) {
+            outgoing = new LinkedList<>();
             this.twin = null;
             this.seq = seq;
             this.count = count;
-            this.mult = mult;
         }
 
-        public Block(String seq) {
-            this(seq, 0, 0);
-        }
-
+        /**
+         * Get the in-degree of this node (which is equal to outdegree of its twin).
+         *
+         * @return the number of incoming edges.
+         */
         public int getIndegree() {
             int indegree = 0;
             if (this.twin != null) {
@@ -58,64 +81,140 @@ public class DBGraph {
             return indegree;
         }
 
+        /**
+         * Get the out-degree of this node.
+         *
+         * @return number of outgoing edges.
+         */
         public int getOutdegree() {
             return this.outgoing.size();
         }
 
-        public boolean addOutgoing(Block n) {
-            if (!outgoing.contains(n)) {
-                outgoing.add(n);
-                return true;
-            }
-            return false;
+        /**
+         * Compute the size of this DBGNode, i.e. the number of k-mers represented by this node.
+         *
+         * @return the number of k-mers represented by this node.
+         */
+        public int getSize() {
+            return seq.length() - k + 1;
         }
 
-        public boolean rmvOutgoing(Block n) {
-            return outgoing.remove(n);
-        }
-
-        public boolean addIncoming(Block n) {
-            if (!twin.outgoing.contains(n)) {
-                twin.outgoing.add(n);
-                return true;
-            }
-            return false;
-        }
-
-        public boolean rmvIncoming(Block n) {
-            return this.twin.outgoing.remove(n);
-
-        }
-
-        public String getSeq() {
-            return seq;
-        }
-
-        public String getRCSeq() {
-            return twin.seq;
-        }
-
-        public String getShortSeq() {
-            return seq.substring(k - 1);
-        }
-
+        /**
+         * Computes the coverage of this node.
+         * <p>
+         * If this node only represents a single k-mer, the coverage is equal to count. Otherwise
+         * it is the average of the counts of all k-mers represented in this node.
+         *
+         * @return the coverage of the contained sequence.
+         */
         public float getCov() {
-            return count / (float) mult;
+            return count / (float) getSize();
         }
 
+        /**
+         * Adds a new edge to the specified node or updates an existing one.
+         * <p>
+         * As all edges are mirrored by a twin edge, this will also create the reverse edge from n.twin
+         * to this nodes's twin. If the edges already exists, this method will either increase or
+         * overwrite their multiplicity depending on the value specified in update.
+         *
+         * @param targetNode   DBGNode to create an edge to.
+         * @param multiplicity multiplicity of edge to create.
+         * @param update       in case the edge already exists, add to edge multiplicity (true) or overwrite (false)
+         */
+        public void addEdgeTo(DBGNode targetNode, int multiplicity, boolean update) {
+            boolean edgeExists = false;
+            for (DBGEdge edge : outgoing) {
+                if (edge.target == targetNode) {
+                    if (update) {
+                        edge.multiplicity += multiplicity;
+                        edge.twin.multiplicity += multiplicity;
+                    } else {
+                        edge.multiplicity = multiplicity;
+                        edge.twin.multiplicity = multiplicity;
+                    }
+                    edgeExists = true;
+                    break;
+                }
+            }
+            if (!edgeExists) {
+                DBGEdge forward = new DBGEdge();
+                DBGEdge backward = new DBGEdge();
+                forward.twin = backward;
+                forward.target = targetNode;
+                forward.multiplicity = multiplicity;
+                backward.twin = forward;
+                backward.target = this.twin;
+                backward.multiplicity = multiplicity;
+                this.outgoing.add(forward);
+                targetNode.twin.outgoing.add(backward);
+            }
+        }
+
+        /**
+         * Removes an edge and its twin reverse-edge.
+         *
+         * @param targetNode target node.
+         * @return true if the edge existed, false otherwise.
+         */
+        public boolean rmvEdgeTo(DBGNode targetNode) {
+            DBGEdge forward = null;
+            for (DBGEdge edge : outgoing) {
+                if (edge.target == targetNode) {
+                    forward = edge;
+                    break;
+                }
+            }
+            if (forward == null) {
+                return false;
+            } else {
+                outgoing.remove(forward);
+                targetNode.twin.outgoing.remove(forward.twin);
+                return true;
+            }
+        }
+
+        /**
+         * Removes all incoming and outgoing edges from this node and its twin.
+         */
+        public void isolate() {
+            while (outgoing.size() > 0) {
+                // remove edge
+                DBGEdge forward = outgoing.remove();
+                // remove reverse edge
+                forward.target.twin.outgoing.remove(forward.twin);
+            }
+            while (twin.outgoing.size() > 0) {
+                // remove edge
+                DBGEdge forward = twin.outgoing.remove();
+                // remove reverse edge
+                forward.target.twin.outgoing.remove(forward.twin);
+            }
+        }
+
+        //TODO find better way of computing extended sequences
+        public DNAString getShortSeq() {
+            return seq.subSequence(k - 1, seq.length());
+        }
+
+        /**
+         * Generates a String representation of this node.
+         *
+         * @return String representation of this node.
+         */
         @Override
         public String toString() {
             String twinSeq = "";
             if (twin == null) {
                 twinSeq = "No twin";
             } else {
-                twinSeq = twin.seq;
+                twinSeq = twin.seq.toString();
             }
-            String s = "[Block: " + seq + "]";
+            String s = "[Node: " + seq + "]";
             s = s + "\n[Twin:  " + twinSeq + "]";
             s = s + "\nOut:[";
-            for (Block n : outgoing) {
-                s = s + n.seq + " ";
+            for (DBGEdge edge : outgoing) {
+                s = s + edge.target.seq.toString() + " ";
             }
             s = s + "]";
             return s;
@@ -123,63 +222,111 @@ public class DBGraph {
 
     }
 
-    public int getSize() {
-        return blocks.size();
+    ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+    /**
+     * Edges in the de Bruijn graph.
+     * <p>
+     * DBGEdges are directed edges which connect overlapping sequences. Every edge stores a pointer to its twin
+     * edge which connects the target twin node to the source twin. The duality of nodes edges
+     * leads to a bipartite graph.
+     *
+     * @author tohei
+     */
+    private class DBGEdge {
+        /**
+         * Target node of the directed DBGEdge.
+         */
+        private DBGNode target;
+        /**
+         * Number of reads using this edge.
+         */
+        private int multiplicity;
+        /**
+         * Twin edge.
+         */
+        private DBGEdge twin;
     }
 
-    public int getK() {
-        return k;
-    }
+    ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    public DBGraph(String[] inputs, int k) {
-        this(inputs, k, false);
-    }
+    /**
+     * Create new de Bruijn Graph (DBGraph) object from an array of DNAString reads for a given k-mer length k.
+     * <p>
+     * The graph is created in 3 steps:
+     * (1) unique k-mers are counted in the set of reads and turned into new DBGNodes
+     * (2) nodes are connected based on k-1 overlap of their sequences
+     * (3) node multiplicities are computed by iterating over the read array
+     *
+     * @param reads   array of DNAString reads.
+     * @param kmers   LinkedHashSet mapping k-mers to counts.
+     * @param k       k-mer size for creating this new graph.
+     * @param verbose be verbose.
+     */
+    public DBGraph(DNAString[] reads, Map<DNAString, Integer> kmers, int k, boolean verbose) {
 
-    public DBGraph(String[] inputs, int k, boolean verbose) {
-
+        // track time needed to create graph
         long startTime = System.currentTimeMillis();
         if (verbose) {
             System.out.println("Building de Bruijn graph from " + k
-                    + "-mers of " + inputs.length + " reads ...");
+                    + "-mers of " + reads.length + " reads ...");
         }
-        LinkedHashMap<String, Integer> kmers = SeqUtils.kmerCounts(inputs, k);
-        blocks = new LinkedHashMap<String, Block>(kmers.size());
+
+        // initialize instance variables
         this.k = k;
+        this.nodesMap = new LinkedHashMap<DNAString, DBGNode>(kmers.size());
 
         if (verbose) {
             System.out.println(" adding nodes ... ");
         }
-        // add blocks
-        for (String kmer : kmers.keySet()) {
-            String kmerRC = SeqUtils.reverseComplement(kmer);
-            // TODO count kmers and their complements separately
-            int count = kmers.get(kmer);
-            if (kmers.containsKey(kmerRC)) {
-                count += kmers.get(kmerRC);
-            }
-            Block n1;
-            Block n2;
-            if (!blocks.containsKey(kmer)) {
-                n1 = new Block(kmer, count, 1);
-                n2 = new Block(kmerRC, count, 1);
-                n1.twin = n2;
-                n2.twin = n1;
 
-                blocks.put(kmer, n1);
-                blocks.put(kmerRC, n2);
+        // add nodesMap
+        for (DNAString kmer : kmers.keySet()) {
+            // (if kmer is in nodesMap, so is its complement)
+            if (!nodesMap.containsKey(kmer)) {
+                DNAString kmerRC = kmer.reverseComplement();
+                int count = kmers.get(kmer);
+
+                // create new node and its twin
+                DBGNode newNode = new DBGNode(kmer, count);
+                DBGNode newTwin = new DBGNode(kmerRC, count);
+                newNode.twin = newTwin;
+                newTwin.twin = newNode;
+                nodesMap.put(kmer, newNode);
+                nodesMap.put(kmerRC, newTwin);
             }
         }
+
         if (verbose) {
             System.out.println(" adding edges ... ");
         }
+
         // add edges
-        for (Map.Entry<String, Block> entry : blocks.entrySet()) {
-            String seq = entry.getKey();
-            for (String s : SeqUtils.extendBack(seq.substring(1, k))) {
-                Block n = blocks.get(s);
-                // do not add edges to twin node
-                if (n != null && n != entry.getValue().twin) {
-                    entry.getValue().addOutgoing(n);
+        for (DNAString nodeSeq : nodesMap.keySet()) {
+            DBGNode node = nodesMap.get(nodeSeq);
+            for (DNAString s : nodeSeq.subSequence(1, k).allVariations(k)) {
+                DBGNode n = nodesMap.get(s);
+                // do not add edges to twin node or itself
+                if (n != null && n != node && n != node.twin) {
+                    node.addEdgeTo(n, 0, false);
+                }
+            }
+        }
+
+        if (verbose) {
+            System.out.println(" computing edge multiplicities ... ");
+        }
+
+        // follow read paths in the graph and update edge multiplicities
+        for (DNAString s : reads) {
+            DNAString endSeq = s.subSequence(0, k);
+            for (int i = 0; i < s.length() - k; i++) {
+                DNAString startSeq = endSeq;
+                endSeq = s.subSequence(i + 1, i + 1 + k);
+                DBGNode start = nodesMap.get(startSeq);
+                DBGNode end = nodesMap.get(endSeq);
+                if (start != end && start != end.twin) {
+                    start.addEdgeTo(end, 1, true);
                 }
             }
         }
@@ -190,25 +337,129 @@ public class DBGraph {
         }
     }
 
-    public boolean mergeBubbles(boolean verbose) {
-        return false;
+    /**
+     * Get number of nodes in the graph.
+     *
+     * @return number of nodes in the graph.
+     */
+    public int getSize() {
+        return nodesMap.size();
     }
 
-    public boolean removeLowCoverageBlocks(boolean verbose, int cutoff) {
+    /**
+     * Get k-mer length.
+     *
+     * @return k-mer length used to create the graph.
+     */
+    public int getK() {
+        return k;
+    }
+
+    /**
+     * Remove a node and its twin from the graph.
+     * <p>
+     * This method first isolates the block (removes all incoming and outgoing edges). Then the node and its twin
+     * are removed from nodesMap.
+     *
+     * @param n DBGNode to remove.
+     */
+    private void removeBlock(DBGNode n) {
+        n.isolate();
+        nodesMap.remove(n.seq);
+        nodesMap.remove(n.twin.seq);
+    }
+
+    /**
+     * Check if the graph contains a node corresponding to the given sequence.
+     *
+     * @param s DNAString to look for.
+     * @return true if the graph contains a node with the argument sequence.
+     */
+    public boolean contains(DNAString s) {
+        return nodesMap.containsKey(s);
+    }
+
+
+    public boolean removeBubbles(boolean verbose) {
+        long startTime = System.currentTimeMillis();
+        int blocksPriorCollapse = this.getSize();
+
         if (verbose) {
-            System.out.print("Removing low coverage blocks. ");
+            System.out.print("Removing low coverage nodes. ");
         }
-        LinkedList<Block> blocksToRemove = new LinkedList<DBGraph.Block>();
-        for (Map.Entry<String, Block> entry : blocks.entrySet()) {
-            Block n = entry.getValue();
-            if (n.getCov() < cutoff) {
-                blocksToRemove.add(n);
+        LinkedList<DBGNode> startingNodes = new LinkedList<DBGNode>();
+        for (DNAString nodeSeq : nodesMap.keySet()) {
+            DBGNode n = nodesMap.get(nodeSeq);
+            if (n.getOutdegree() == 2) {
+                DBGNode neighbor1 = n.outgoing.getFirst().target;
+                DBGNode neighbor2 = n.outgoing.getLast().target;
+                if (neighbor1.getIndegree() == 1 && neighbor1.getOutdegree() == 1) {
+                    if (neighbor2.getIndegree() == 1 && neighbor2.getOutdegree() == 1) {
+                        if (neighbor1.outgoing.getFirst().target == neighbor2.outgoing.getFirst().target) {
+                            startingNodes.add(n);
+                        }
+                    }
+                }
             }
         }
-        if (blocksToRemove.size() > 0) {
+        if (verbose) {
+            System.out.println("Removing bubbles. Number of starting nodes: " + startingNodes.size());
+        }
+        boolean bubbleCollapsed = false;
+        for (DBGNode start : startingNodes) {
+            if (start.getOutdegree() == 2) {
+                bubbleCollapsed = removeSimpleBubble(start) || bubbleCollapsed;
+            }
+        }
+        if (verbose) {
+            long endTime = System.currentTimeMillis();
+            System.out.print(" Removed bubbles (" + (endTime - startTime) / 1000 + " seconds). ");
+            if (bubbleCollapsed) {
+                System.out.println("Graph size - before: " + blocksPriorCollapse + ", after: " + getSize());
+            } else {
+                System.out.println("No changes.");
+            }
+        }
+        return bubbleCollapsed;
+    }
+
+    public boolean removeSimpleBubble(DBGNode start) {
+        DBGNode top = start.outgoing.getFirst().target;
+        DBGNode bot = start.outgoing.getLast().target;
+        int maxDist = (int) (0.1 * min(top.seq.length(), bot.seq.length()));
+        if (DNAStringUtils.LevDistance(top.seq, bot.seq) < maxDist) {
+            DBGNode nodeToRemove = top.getCov() < bot.getCov() ? top : bot;
+            removeBlock(nodeToRemove);
+            return true;
+        } else {
+            return false;
+        }
+    }
+
+    /**
+     * Remove low coverage nodes and their twins (chimeric connections).
+     *
+     * @param cutoff  coverage cutoff.
+     * @param verbose be verbose.
+     * @return true if nodes were removed, false otherwise.
+     */
+    public boolean removeLowCoverageBlocks(int cutoff, boolean verbose) {
+        if (verbose) {
+            System.out.print("Removing low coverage nodes. ");
+        }
+        LinkedList<DBGNode> nodesToRemove = new LinkedList<DBGNode>();
+        for (DNAString nodeSeq : nodesMap.keySet()) {
+            DBGNode n = nodesMap.get(nodeSeq);
+            if (n.getCov() < cutoff) {
+                nodesToRemove.add(n);
+            }
+        }
+        if (nodesToRemove.size() > 0) {
             System.out.print("Graph size - before: " + this.getSize());
-            for (Block block : blocksToRemove) {
-                this.rmvBlock(block);
+            for (DBGNode node : nodesToRemove) {
+                if (nodesMap.containsKey(node.seq)) {
+                    removeBlock(node);
+                }
             }
             System.out.println(", after: " + this.getSize());
             return true;
@@ -218,23 +469,45 @@ public class DBGraph {
         }
     }
 
-    public boolean removeTips(boolean verbose, int cutoff) {
+    /**
+     * Remove tips from the graph.
+     * <p>
+     * A node-twin pair with only one outgoing edge is considered an erroneous tip if its sequence is shorter
+     * than 2k and there exists an edge going from the junction to the graph with higher multiplicity than the
+     * edge going from the junction to the tip.
+     *
+     * @param verbose be verbose.
+     * @return true if nodes were removed, false otherwise.
+     */
+    public boolean removeTips(boolean verbose) {
         if (verbose) {
             System.out.print("Removing Tips. ");
         }
-        LinkedList<Block> blocksToRemove = new LinkedList<DBGraph.Block>();
-        for (Map.Entry<String, Block> entry : blocks.entrySet()) {
-            Block n = entry.getValue();
-            if ((n.getSeq().length() < 2 * k) && (n.getCov() < cutoff)) {
-                if (n.getIndegree() == 0 || n.getOutdegree() == 0) {
-                    blocksToRemove.add(n);
+        LinkedList<DBGNode> blocksToRemove = new LinkedList<DBGNode>();
+        for (DNAString nodeSeq : nodesMap.keySet()) {
+            DBGNode n = nodesMap.get(nodeSeq);
+            if (n.seq.length() < 2 * k) { // probably one case is sufficient
+                if (n.getIndegree() == 0 && n.getOutdegree() == 1) {
+                    DBGEdge pathFromTip = n.outgoing.getFirst();
+                    for (DBGEdge edge : pathFromTip.target.outgoing) {
+                        if (edge.multiplicity > pathFromTip.multiplicity) {
+                            blocksToRemove.add(n);
+                        }
+                    }
+                } else if (n.getOutdegree() == 0 && n.getIndegree() == 1) {
+                    DBGEdge pathFromTip = n.twin.outgoing.getFirst();
+                    for (DBGEdge edge : pathFromTip.target.outgoing) {
+                        if (edge.multiplicity > pathFromTip.multiplicity) {
+                            blocksToRemove.add(n);
+                        }
+                    }
                 }
             }
         }
         if (blocksToRemove.size() > 0) {
             System.out.print("Graph size - before: " + this.getSize());
-            for (Block block : blocksToRemove) {
-                this.rmvBlock(block);
+            for (DBGNode node : blocksToRemove) {
+                this.removeBlock(node);
             }
             System.out.println(", after: " + this.getSize());
             return true;
@@ -244,31 +517,28 @@ public class DBGraph {
         }
     }
 
-    private void rmvBlock(Block n) {
-        for (Block block : n.outgoing) {
-            block.twin.rmvOutgoing(n.twin);
-        }
-        for (Block block : n.twin.outgoing) {
-            block.twin.rmvOutgoing(n);
-        }
-        blocks.remove(n.getSeq());
-        blocks.remove(n.getRCSeq());
-    }
-
+    /**
+     * Collapse all linear stretches in the graph.
+     *
+     * @param verbose be verbose
+     * @return true if a linear stretch was collapsed.
+     */
     public boolean collapse(boolean verbose) {
         long startTime = System.currentTimeMillis();
         int blocksPriorCollapse = this.getSize();
 
-        LinkedList<Block> startingBlocks = new LinkedList<Block>();
-        for (Map.Entry<String, Block> entry : blocks.entrySet()) {
-            Block n = entry.getValue();
+        LinkedList<DBGNode> startingBlocks = new LinkedList<DBGNode>();
+        for (DNAString nodeSeq : nodesMap.keySet()) {
+            DBGNode n = nodesMap.get(nodeSeq);
             if (n.getOutdegree() == 1) {
                 if (n.getIndegree() != 1) {
                     // multiple or no ancestors
                     startingBlocks.add(n);
                 } else {
                     // single ancestor
-                    Block ancestor = (n.twin.outgoing.iterator().next()).twin;
+                    DBGEdge backward = n.twin.outgoing.getFirst();
+                    DBGNode ancestor = backward.target.twin;
+                    // check if ancestor is a branching node
                     if (ancestor.getOutdegree() > 1) {
                         startingBlocks.add(n);
                     }
@@ -276,18 +546,17 @@ public class DBGraph {
             }
         }
         if (verbose) {
-            System.out.println("Collapsing graph. Number of starting blocks: " + startingBlocks.size());
+            System.out.println("Collapsing graph. Number of starting nodes: " + startingBlocks.size());
         }
         boolean collapsed = false;
-        for (Block start : startingBlocks) {
-            if (blocks.containsKey(start.getSeq())) {
-                boolean startBlockCollapse = collapseLinearStretch(start);
-                collapsed = collapsed || startBlockCollapse;
+        for (DBGNode start : startingBlocks) {
+            if (nodesMap.containsKey(start.seq)) {
+                collapsed = collapseLinearStretch(start) || collapsed;
             }
         }
         if (verbose) {
             long endTime = System.currentTimeMillis();
-            System.out.print("Collapsed de Bruijn graph (" + (endTime - startTime) / 1000 + " seconds). ");
+            System.out.print(" Collapsed de Bruijn graph (" + (endTime - startTime) / 1000 + " seconds). ");
             if (collapsed) {
                 System.out.println("Graph size - before: " + blocksPriorCollapse + ", after: " + getSize());
             } else {
@@ -297,21 +566,26 @@ public class DBGraph {
         return collapsed;
     }
 
-    private boolean collapseLinearStretch(Block start) {
+    /**
+     * Check if a given node is the beginning of a linear stretch and collapse if possible.
+     *
+     * @param start first node of a potential linear stretch with exactly one outgoing edge.
+     * @return true if start was the beginning of a linear stretch.
+     */
+    private boolean collapseLinearStretch(DBGNode start) {
         boolean collapsed = false;
-        LinkedList<Block> linearStretch = new LinkedList<Block>();
+        LinkedList<DBGNode> linearStretch = new LinkedList<DBGNode>();
         linearStretch.add(start);
 
-        // all start blocks have exactly one outgoing edge
-        Block n = start.outgoing.iterator().next();
+        // all start nodesMap have exactly one outgoing edge
+        DBGNode n = start.outgoing.getFirst().target;
         while ((n.getIndegree() == 1) && !(linearStretch.contains(n) || linearStretch.contains(n.twin))) {
             linearStretch.add(n);
             if (n.getOutdegree() == 1) {
-                n = n.outgoing.iterator().next();
+                n = n.outgoing.getFirst().target;
             } else {
                 break;
             }
-
         }
         if (linearStretch.size() > 1) {
             collapsed = true;
@@ -320,86 +594,63 @@ public class DBGraph {
         return collapsed;
     }
 
-    private void collapseBlocks(LinkedList<Block> linearStretch) {
-        Block first = linearStretch.getFirst();
-        Block last = linearStretch.getLast();
 
-        String shortSeq = "";
+    /**
+     * Collapse list of linear nodes into single supernode.
+     *
+     * @param linearStretch LinkedList of DBGNodes to collapse.
+     */
+    private void collapseBlocks(LinkedList<DBGNode> linearStretch) {
+        DBGNode first = linearStretch.getFirst();
+        DBGNode last = linearStretch.getLast();
+
+        // TODO: use byte array
+        DNAString shortSeq = new DNAString();
         int count = 0;
-        int mult = 0;
-        for (Block block : linearStretch) {
+        for (DBGNode block : linearStretch) {
             count = count + block.count;
-            mult = mult + block.mult;
             if (block == first) continue;
-            shortSeq = shortSeq + block.getShortSeq();
+            shortSeq = shortSeq.concat(block.getShortSeq());
         }
-        String shortSeqRC = SeqUtils.reverseComplement(shortSeq);
-        String newSeq = first.getSeq() + shortSeq;
-        String newSeqRC = shortSeqRC + first.getRCSeq();
-        Block newBlock = new Block(newSeq, count, mult);
-        Block newTwin = new Block(newSeqRC, count, mult);
-        newBlock.twin = newTwin;
-        newTwin.twin = newBlock;
+        DNAString shortSeqRC = shortSeq.reverseComplement();
+        DNAString newSeq = first.seq.concat(shortSeq);
+        DNAString newSeqRC = shortSeqRC.concat(first.twin.seq);
 
-        newBlock.outgoing = last.outgoing;
-        newTwin.outgoing = first.twin.outgoing;
+        DBGNode newNode = new DBGNode(newSeq, count);
+        DBGNode newTwin = new DBGNode(newSeqRC, count);
+        newNode.twin = newTwin;
+        newTwin.twin = newNode;
 
-        // update incoming to n
-        for (Block block : newTwin.outgoing) {
-            block.twin.rmvOutgoing(first);
-            block.twin.addOutgoing(newBlock);
+        // connect new node to the rest of the graph
+        // (reverse edges are added automatically)
+        for (DBGEdge edge : first.twin.outgoing) {
+            newTwin.addEdgeTo(edge.target, edge.multiplicity, false);
         }
-        // update outgoing from m
-        for (Block block : newBlock.outgoing) {
-            block.twin.rmvOutgoing(last.twin);
-            block.twin.addOutgoing(newTwin);
+        for (DBGEdge edge : last.outgoing) {
+            newNode.addEdgeTo(edge.target, edge.multiplicity, false);
         }
 
-        // remove old blocks and add new blocks
-        for (Block block : linearStretch) {
-            blocks.remove(block.getSeq());
-            blocks.remove(block.getRCSeq());
+        // detach first and last node from the rest of the graph
+        first.isolate();
+        last.isolate();
+
+        // remove old nodes and add new nodes
+        for (DBGNode node : linearStretch) {
+            nodesMap.remove(node.seq);
+            nodesMap.remove(node.twin.seq);
         }
-        blocks.put(newSeq, newBlock);
-        blocks.put(newSeqRC, newTwin);
+        nodesMap.put(newSeq, newNode);
+        nodesMap.put(newSeqRC, newTwin);
     }
 
-    public String[] getIncoming(String s) {
-        Block m = blocks.get(s);
-        if (m == null) {
-            throw new NoSuchElementException("String not found.");
-        } else {
-            m = m.twin;
-            String[] out = new String[m.getOutdegree()];
-            int j = 0;
-            for (Block n : m.outgoing) {
-                out[j] = n.getRCSeq();
-                j++;
-            }
-            return out;
-        }
-    }
-
-    public String[] getOutgoing(String s) {
-        Block m = blocks.get(s);
-        if (m == null) {
-            throw new NoSuchElementException("String not found.");
-        } else {
-            String[] out = new String[m.getOutdegree()];
-            int j = 0;
-            for (Block n : m.outgoing) {
-                out[j] = n.getSeq();
-                j++;
-            }
-            return out;
-        }
-    }
-
-    public boolean contains(String s) {
-        return blocks.containsKey(s);
-    }
-
-    public void simplify(boolean verbose, boolean correctErrors, int cutoffTips, int cutoffCov) {
+    /**
+     * Simplifies the graph by repeatedly applying removeTips, removeLowCoverageBlocks and collapse.
+     *
+     * @param correctErrors apply removeTips and removeLowCoverageBlocks and collapse (true) or just collapse (false)
+     * @param cutoffCov     cutoff threshold for removeLowCoverageBlocks
+     * @param verbose       be verbose
+     */
+    public void simplify(boolean correctErrors, int cutoffCov, boolean verbose) {
         if (verbose) {
             String s = null;
             if (correctErrors) s = "with";
@@ -415,72 +666,149 @@ public class DBGraph {
             }
             modified = this.collapse(verbose);
             if (correctErrors) {
-                modified = this.removeTips(verbose, cutoffTips) || modified;
-                modified = this.removeLowCoverageBlocks(verbose, cutoffCov) || modified;
+                modified = this.removeTips(verbose) || modified;
+                modified = this.removeBubbles(verbose) || modified;
+                modified = this.removeLowCoverageBlocks(cutoffCov, verbose) || modified;
             }
             iter++;
         }
     }
 
-    public String[] getContigs(boolean includeRC) {
-        LinkedHashSet<String> visited = new LinkedHashSet<String>(blocks.size());
-        String[] contigs = null;
+    /**
+     * Get all node sequences from the graph.
+     *
+     * @param includeRC include the reverse complement of every sequence
+     * @return DNAString array containing all node sequences.
+     */
+    public DNAString[] getSequences(boolean includeRC) {
+        LinkedHashSet<DNAString> visited = new LinkedHashSet<DNAString>(nodesMap.size());
+        DNAString[] contigs;
         if (includeRC) {
-            contigs = new String[blocks.size()];
+            contigs = new DNAString[getSize()];
         } else {
-            contigs = new String[blocks.size() / 2];
+            contigs = new DNAString[getSize() / 2];
         }
         int i = 0;
-        for (Map.Entry<String, Block> entry : blocks.entrySet()) {
-            Block block = entry.getValue();
-            if (!visited.contains(block.getSeq())) {
-                contigs[i] = block.getSeq();
+        for (DNAString nodeSeq : nodesMap.keySet()) {
+            DBGNode n = nodesMap.get(nodeSeq);
+            if (!visited.contains(n.seq)) {
+                contigs[i] = n.seq;
                 i++;
                 if (includeRC) {
-                    contigs[i] = block.getRCSeq();
+                    contigs[i] = n.twin.seq;
                     i++;
                 }
-                visited.add(block.getSeq());
-                visited.add(block.getRCSeq());
+                visited.add(n.seq);
+                visited.add(n.twin.seq);
             }
         }
         return contigs;
     }
 
-    public int getMaxContigLength() {
+    /**
+     * Find the length of the largest sequence.
+     *
+     * @return maximum sequence length.
+     */
+    public int getMaxSequenceLength() {
         int max = 0;
-        for (String seq : blocks.keySet()) {
-            if (seq.length() > max) {
-                max = seq.length();
+        for (DNAString nodeSeq : nodesMap.keySet()) {
+            if (nodeSeq.length() > max) {
+                max = nodeSeq.length();
             }
         }
         return max;
     }
 
-    public float getAvgContigLength() {
+    /**
+     * Compute the average length of the sequences in this graph.
+     *
+     * @return average sequence length
+     */
+    public float getAvgSequenceLength() {
         int sum = 0;
-        for (String seq : blocks.keySet()) {
-                sum += seq.length();
+        for (DNAString nodeSeq : nodesMap.keySet()) {
+            sum += nodeSeq.length();
         }
-        return (float)sum/blocks.size();
+        return (float) sum / nodesMap.size();
     }
 
-    public int getMaxCount() {
-        int max = 0;
-        for (String seq : blocks.keySet()) {
-            if (blocks.get(seq).count > max) {
-                max = seq.length();
+    /**
+     * Compute the maximum coverage of any node in the graph.
+     *
+     * @return maximum coverage of all nodes in the graph.
+     */
+    public float getMaxCov() {
+        float max = 0;
+        for (DNAString nodeSeq : nodesMap.keySet()) {
+            DBGNode n = nodesMap.get(nodeSeq);
+            if (n.getCov() > max) {
+                max = n.getCov();
             }
         }
         return max;
     }
 
+    /**
+     * Generate String representation of the graph (for debugging purposes).
+     *
+     * @return String representation of this DBGraph.
+     */
     @Override
     public String toString() {
         String s = "";
-        for (Map.Entry<String, Block> entry : blocks.entrySet()) {
-            s = s + entry.getValue().toString() + "\n";
+        for (DNAString nodeSeq : nodesMap.keySet()) {
+            DBGNode n = nodesMap.get(nodeSeq);
+            s = s + n.toString() + "\n";
         }
         return s;
+    }
+
+
+    public static void main(String[] args) {
+        String inputFile = "/home/tohei/Data/ASAData/reads_complex.fasta";
+        String outputFile = "/home/tohei/Data/ASAData/out_new.fasta";
+
+        System.out.println("Reading files ... ");
+        DNAString[] inputs = null;
+        try {
+            inputs = DNAStringUtils.readFasta(inputFile);
+        } catch (FileNotFoundException e1) {
+            System.err.println("Could not find input file.");
+        } catch (IOException e2) {
+            System.err.println("Failed to read input file.");
+        }
+        int k = 21;
+
+        System.out.println("Error correction ....");
+        ReadCorrector rcor = new ReadCorrector();
+        rcor.setReads(inputs, k);
+
+        rcor.setCutoff(3);
+        rcor.computeSAC(true);
+        rcor.setCutoff(2);
+        rcor.computeSAC(true);
+
+        DBGraph G = new DBGraph(inputs, rcor.getCounts(), k, true);
+
+        G.simplify(true, 2, true);
+        DNAString[] contigs = G.getSequences(false);
+
+        System.out.println();
+        int max = G.getMaxSequenceLength();
+        System.out.println("Max contig length: " + max);
+        System.out.println("Avg contig length: " + G.getAvgSequenceLength());
+        System.out.println();
+
+        // save
+        System.out.print("Saving to " + outputFile + " ... ");
+        try {
+            DNAStringUtils.writeFasta(outputFile, contigs);
+        } catch (IOException e) {
+            System.out.println();
+            System.err.println("Could not save to output file.");
+            return;
+        }
+        System.out.println("done.");
     }
 }
