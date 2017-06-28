@@ -14,7 +14,7 @@ public class LaunchAssembly {
             System.out.println();
             System.out.println(" [reads.fasta] - input fasta file");
             System.out.println(" [output.fasta] - output file (fasta)");
-            System.out.println(" [size] - k-mer size");
+            System.out.println(" [size] - k-mer size (odd integer)");
             System.out.println(" [k-mer] - (optional) print incoming and outgoing k-mers of [k-mer]");
             System.out.println();
             return;
@@ -33,6 +33,11 @@ public class LaunchAssembly {
             System.err.println("Invalid k-mer size.");
             return;
         }
+        if (k % 2 == 1) {
+            System.err.println("k should be odd.");
+            return;
+        }
+
         String inputFile = args[0];
         String outputFile = args[1];
 
@@ -45,13 +50,13 @@ public class LaunchAssembly {
             System.err.println("Failed to read input file.");
         }
 
-        // solve task (a) manually (de Bruijn graph will be built on error corrected reads)
         if (args.length == 4) {
             DNAString kmer = new DNAString(args[3]);
             if (kmer.length() != k) {
                 System.err.println("Invalid k-mer. k-mer has to be of specified length.");
                 return;
             }
+            // solve task (a) manually (de Bruijn graph will be built on error corrected reads)
             LinkedHashMap<DNAString, Integer> counts = DNAStringUtils.kmerCounts(inputs, k);
             System.out.print("Incoming k-mers - ");
             boolean hasEdge = false;
@@ -96,7 +101,7 @@ public class LaunchAssembly {
         DBGraph G = new DBGraph(inputs, rcor.getCounts(), k, verbose);
 
         G.simplify(true, 2, verbose);
-        DNAString[] contigs = G.getSequences(true);
+        DNAString[] contigs = G.getSequences();
 
         System.out.println();
         int max = G.getMaxSequenceLength();

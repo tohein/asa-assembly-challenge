@@ -36,6 +36,15 @@ public class ReadCorrector {
     private LinkedHashMap<DNAString, Integer> kmerCounts;
 
     /**
+     * Limit number of replacements (majority vote)
+     */
+    private final boolean LIMIT_REPLACEMENTS = false;
+    /**
+     * Maximum number of replacements per read (majority vote).
+     */
+    private final int MAX_REPLACEMENTS = 4;
+
+    /**
      * Get counts of k-mers and their reverse complements.
      *
      * @return LinkedHashSet mapping k-mers to counts.
@@ -78,11 +87,6 @@ public class ReadCorrector {
          * Old read.
          */
         private DNAString old;
-
-        /**
-         * Maximum number of replacements per read (majority vote).
-         */
-        private final int MAX_REPLACEMENTS = 4;
 
         /**
          * Create new ReplacementList.
@@ -170,9 +174,15 @@ public class ReadCorrector {
          * @return corrected read (DNAString).
          */
         public DNAString getMajorityReplacement() {
-            int[] topCandidatePos = new int[MAX_REPLACEMENTS];
+            int replLen = 0;
+            if (LIMIT_REPLACEMENTS) {
+                replLen = MAX_REPLACEMENTS;
+            } else {
+                replLen = getListLength();
+            }
+            int[] topCandidatePos = new int[replLen];
             // default initialization is all zeros
-            int[] topCandidateScores = new int[MAX_REPLACEMENTS];
+            int[] topCandidateScores = new int[replLen];
 
             for (int i = 0; i < getListLength(); i++) {
                 byte c = getMajorityCandidate(i);
