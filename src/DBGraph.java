@@ -33,7 +33,7 @@ public class DBGraph {
      *
      * @author tohei
      */
-    private class DBGNode implements Comparable<DBGNode> {
+    private class DBGNode {
         /**
          * outgoing edges (incoming edges are parallel to the outgoing edges of the twin node)
          */
@@ -52,11 +52,6 @@ public class DBGraph {
         private int count;
 
         /**
-         * used by search algorithm for collapsing bubbles
-         */
-        private float dist;
-
-        /**
          * Create new DBGNode from a sequence and its read count.
          *
          * @param seq   sequence to store in the new node.
@@ -67,7 +62,6 @@ public class DBGraph {
             this.twin = null;
             this.seq = seq;
             this.count = count;
-            this.dist = 0;
         }
 
         /**
@@ -77,10 +71,24 @@ public class DBGraph {
          */
         private int getIndegree() {
             int indegree = 0;
-            if (this.twin != null) {
-                indegree = this.twin.outgoing.size();
+            if (twin != null) {
+                indegree = twin.outgoing.size();
             }
             return indegree;
+        }
+
+        /**
+         * Checks whether or not this node is a tip.
+         *
+         * @return true if node is a tip.
+         */
+        private boolean isTip() {
+            if (seq.length() > 2 * k) return false;
+            else {
+                if (getOutdegree() == 1 && getIndegree() == 0) return true;
+                if (getIndegree() == 1 && getOutdegree() == 0) return true;
+                return false;
+            }
         }
 
         /**
@@ -89,7 +97,7 @@ public class DBGraph {
          * @return number of outgoing edges.
          */
         private int getOutdegree() {
-            return this.outgoing.size();
+            return outgoing.size();
         }
 
         /**
@@ -221,11 +229,6 @@ public class DBGraph {
             }
             s = s + "]";
             return s;
-        }
-
-        @Override
-        public int compareTo(DBGNode n) {
-            return Float.compare(this.dist, n.dist);
         }
     }
 
@@ -436,6 +439,21 @@ public class DBGraph {
     }
 
     /**
+     * Determine the maximum coverage of any node in the graph.
+     *
+     * @return maximum coverage of any node in the graph.
+     */
+    public float getMaxCov() {
+        float max = 0;
+        for (DBGNode node : nodesMap.values()) {
+            if (node.getCov() > max) {
+                max = node.getCov();
+            }
+        }
+        return max;
+    }
+
+    /**
      * Compute the average length of the sequences in this graph.
      *
      * @return average sequence length
@@ -449,22 +467,6 @@ public class DBGraph {
     }
 
     /**
-     * Compute the maximum coverage of any node in the graph.
-     *
-     * @return maximum coverage of all nodes in the graph.
-     */
-    public float getMaxCov() {
-        float max = 0;
-        for (DNAString nodeSeq : nodesMap.keySet()) {
-            DBGNode n = nodesMap.get(nodeSeq);
-            if (n.getCov() > max) {
-                max = n.getCov();
-            }
-        }
-        return max;
-    }
-
-    /**
      * Remove bubbles from the graph.
      *
      * @param verbose be verbose
@@ -472,7 +474,7 @@ public class DBGraph {
      */
     public boolean removeBubbles(boolean verbose) {
         long startTime = System.currentTimeMillis();
-        int blocksPriorCollapse = this.getSize();
+        int blocksPriorCollapse = getSize();
 
         if (verbose) {
             System.out.print("Removing bubbles. ");
@@ -532,15 +534,18 @@ public class DBGraph {
      * @return true if bubble was collapsed.
      */
     private boolean removeSimpleBubble(DBGNode start, DBGNode top, DBGNode bot) {
+        // TODO update edge mult ?
         DNAString topSeq = top.seq;
         DNAString botSeq = bot.seq;
         int topEdgeScore = 0;
         int botEdgeScore = 0;
-        for (DBGEdge edge : start.outgoing) {
-            if (edge.target == top) topEdgeScore = edge.multiplicity;
-            if (edge.target == bot) botEdgeScore = edge.multiplicity;
+        for (DBGEdge edge : top.twin.outgoing) {
+            topEdgeScore += edge.multiplicity;
         }
-        DBGNode nodeToRemove = top.getSize() / topEdgeScore < bot.getSize() / botEdgeScore ? bot : top;
+        for (DBGEdge edge : bot.twin.outgoing) {
+            botEdgeScore += edge.multiplicity;
+        }
+        DBGNode nodeToRemove = topEdgeScore < botEdgeScore ? top : bot;
         if (top.getSize() > bot.getSize()) { // top longer
             topSeq = top.seq.subSequence(0, bot.seq.length());
             botSeq = bot.seq;
@@ -575,13 +580,13 @@ public class DBGraph {
             }
         }
         if (nodesToRemove.size() > 0) {
-            System.out.print("Graph size - before: " + this.getSize());
+            System.out.print("Graph size - before: " + getSize());
             for (DBGNode node : nodesToRemove) {
                 if (nodesMap.containsKey(node.seq)) {
                     removeBlock(node);
                 }
             }
-            System.out.println(", after: " + this.getSize());
+            System.out.println(", after: " + getSize());
             return true;
         } else {
             System.out.println("No changes");
@@ -606,30 +611,28 @@ public class DBGraph {
         LinkedList<DBGNode> blocksToRemove = new LinkedList<>();
         for (DNAString nodeSeq : nodesMap.keySet()) {
             DBGNode n = nodesMap.get(nodeSeq);
-            if (n.seq.length() < 2 * k) { // probably one case is sufficient
-                if (n.getIndegree() == 0 && n.getOutdegree() == 1) {
-                    DBGEdge pathFromTip = n.outgoing.getFirst();
-                    for (DBGEdge edge : pathFromTip.target.outgoing) {
-                        if (edge.multiplicity > pathFromTip.multiplicity) {
-                            blocksToRemove.add(n);
-                        }
-                    }
-                } else if (n.getOutdegree() == 0 && n.getIndegree() == 1) {
-                    DBGEdge pathFromTip = n.twin.outgoing.getFirst();
-                    for (DBGEdge edge : pathFromTip.target.outgoing) {
-                        if (edge.multiplicity > pathFromTip.multiplicity) {
-                            blocksToRemove.add(n);
-                        }
+            if (n.isTip()) {
+                DBGEdge pathFromTip;
+                if (n.getIndegree() == 1) pathFromTip = n.twin.outgoing.getFirst();
+                else pathFromTip = n.outgoing.getFirst();
+                for (DBGEdge edge : pathFromTip.target.outgoing) {
+                    if (edge.multiplicity > pathFromTip.multiplicity) {
+                        blocksToRemove.add(n);
                     }
                 }
             }
         }
-        if (blocksToRemove.size() > 0) {
-            System.out.print("Graph size - before: " + this.getSize());
-            for (DBGNode node : blocksToRemove) {
-                this.removeBlock(node);
+        int blocksPriorTipRemoval = getSize();
+        boolean removedTips = false;
+        for (DBGNode node : blocksToRemove) {
+            // check that node still exists and is a tip
+            if (nodesMap.containsKey(node.seq) && node.isTip()) {
+                removedTips = true;
+                removeBlock(node);
             }
-            System.out.println(", after: " + this.getSize());
+        }
+        if (removedTips) {
+            System.out.print("Graph size - before: " + blocksPriorTipRemoval + ", after: " + getSize());
             return true;
         } else {
             System.out.println("No changes");
@@ -645,8 +648,9 @@ public class DBGraph {
      */
     public boolean collapse(boolean verbose) {
         long startTime = System.currentTimeMillis();
-        int blocksPriorCollapse = this.getSize();
+        int blocksPriorCollapse = getSize();
 
+        // find first nodes in a linear sequence
         LinkedList<DBGNode> startingBlocks = new LinkedList<>();
         for (DNAString nodeSeq : nodesMap.keySet()) {
             DBGNode n = nodesMap.get(nodeSeq);
@@ -716,7 +720,7 @@ public class DBGraph {
     }
 
     /**
-     * Collapse list of linear nodes into single supernode.
+     * Collapse list of linear nodes into single super-node.
      *
      * @param linearStretch LinkedList of DBGNodes to collapse.
      */
@@ -754,7 +758,7 @@ public class DBGraph {
         first.isolate();
         last.isolate();
 
-        // remove old nodes and add new nodes
+        // remove old nodes
         for (DBGNode node : linearStretch) {
             nodesMap.remove(node.seq);
             nodesMap.remove(node.twin.seq);
@@ -762,12 +766,13 @@ public class DBGraph {
 
         // should be impossible as every node seq starts with unique k-mer
         if (nodesMap.containsKey(newSeq)) {
-            System.err.println("ERROR: OVERWRITING EXISTING NODE");
+            System.err.println("WARNING: overwriting existing node");
         }
         if (newSeq.equals(newSeqRC)) {
-            System.err.println("ERROR: NODE EQUALS TWIN");
+            System.err.println("WARNING: node equals its own twin");
         }
 
+        // add new nodes
         nodesMap.put(newSeq, newNode);
         nodesMap.put(newSeqRC, newTwin);
     }
@@ -793,11 +798,12 @@ public class DBGraph {
             if (verbose) {
                 System.out.println("\t------------- Iteration " + iter + " -------------");
             }
-            modified = this.collapse(verbose);
+            modified = collapse(verbose);
             if (correctErrors) {
-                modified = this.removeTips(verbose) || modified;
-                modified = this.removeBubbles(verbose) || modified;
-                modified = this.removeLowCoverageBlocks(cutoffCov, verbose) || modified;
+                modified = removeTips(verbose) || modified;
+                modified = removeBubbles(verbose) || modified;
+                modified = collapse(verbose) || modified;
+                modified = removeLowCoverageBlocks(cutoffCov, verbose) || modified;
             }
             iter++;
         }
@@ -837,14 +843,12 @@ public class DBGraph {
         System.out.println("Error correction ....");
         ReadCorrector rcor = new ReadCorrector();
         rcor.setReads(inputs, k);
-
         rcor.setCutoff(3);
         rcor.computeSAC(true);
         rcor.setCutoff(2);
         rcor.computeSAC(true);
 
         DBGraph G = new DBGraph(inputs, rcor.getCounts(), k, true);
-
         G.simplify(true, 2, true);
         DNAString[] contigs = G.getSequences(false, k);
 
