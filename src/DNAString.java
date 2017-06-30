@@ -107,6 +107,17 @@ public final class DNAString implements CharSequence {
     }
 
     /**
+     * Creates a new DNAString where the base at position pos will be replaced.
+     * @param pos replacement index.
+     * @param replacement replacement base.
+     */
+    public DNAString replaceCharAt(int pos, byte replacement) {
+        byte[] newSequence = sequence.clone();
+        newSequence[pos] = replacement;
+        return new DNAString(newSequence);
+    }
+
+    /**
      * Concatenates the specified string to the end of this string.
      * <p>
      * If the length of the argument string is 0, then this DNAString object is returned. Otherwise, a new
@@ -235,11 +246,5 @@ public final class DNAString implements CharSequence {
     @Override
     public String toString() {
         return new String(sequence);
-    }
-
-    public static void main(String[] args) {
-        DNAString dna = new DNAString("ACGT");
-        String s = "hello";
-        System.out.println(dna.subSequence(4, 4));
     }
 }
