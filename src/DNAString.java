@@ -43,7 +43,7 @@ public final class DNAString implements CharSequence {
      * @param sequence byte array.
      */
     public DNAString(byte[] sequence) {
-        this.sequence = sequence;
+        this.sequence = sequence.clone();
     }
 
     /**
