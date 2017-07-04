@@ -380,7 +380,7 @@ public class ReadCorrector {
      */
     public int computeBestReplacement(boolean verbose) {
         long startTime = System.currentTimeMillis();
-        if (verbose) System.out.print("Computing best replacements (cutoff = " + cutoff + ") ... ");
+        if (verbose) System.out.print("Computing best replacements  (cutoff = " + cutoff + ") ... ");
 
         int numOfRepl = 0;
         for (int i = 0; i < reads.length; i++) {
@@ -466,23 +466,5 @@ public class ReadCorrector {
             }
         }
         return bestSeq;
-    }
-
-    public static void main(String[] args) {
-        String[] reads = {"ACTA", "TAGT", "ACTA", "ACTT"};
-        DNAString[] reads2 = new DNAString[reads.length];
-        for (int i = 0; i < reads.length; i++) {
-            reads2[i] = new DNAString(reads[i]);
-        }
-        ReadCorrector r = new ReadCorrector();
-        r.setReads(reads2, 3);
-        System.out.println(Arrays.toString(reads2));
-        System.out.println(r.getCounts().toString());
-        r.setCutoff(2);
-        r.computeBestReplacement(true);
-        System.out.println(r.getCounts().toString());
-        System.out.println(Arrays.toString(reads2));
-
-
     }
 }

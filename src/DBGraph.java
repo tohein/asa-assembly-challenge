@@ -501,9 +501,6 @@ public class DBGraph {
                 }
             }
         }
-        /*if (verbose) {
-            System.out.println("Removing bubbles. Number of potential bubbles: " + simplePaths.size());
-        }*/
 
         boolean bubbleCollapsed = false;
         for (DBGNode path : simplePaths) {
@@ -731,9 +728,7 @@ public class DBGraph {
                 }
             }
         }
-        /*if (verbose) {
-            System.out.println("Collapsing graph. Number of starting nodes: " + startingBlocks.size());
-        }*/
+
         boolean collapsed = false;
         for (DBGNode start : startingBlocks) {
             if (nodesMap.containsKey(start.seq)) {
@@ -859,7 +854,7 @@ public class DBGraph {
             String s;
             if (correctErrors) s = "with";
             else s = "without";
-            System.out.println("Simplifying graph (" + s + " error correction)");
+            System.out.println("Simplifying graph (" + s + " error correction):");
         }
         int iter = 1;
         boolean modified = true;
@@ -878,10 +873,12 @@ public class DBGraph {
         if (verbose) {
             System.out.println("\t-------------------------------------");
         }
-        removeLowCoverageBlocks(cutoffCov, verbose);
-        collapse(verbose);
+        if (correctErrors) {
+            removeLowCoverageBlocks(cutoffCov, verbose);
+            collapse(verbose);
+        }
         if (verbose) {
-            System.out.println("\nDone. Number of nodes: " + getSize());
+            System.out.println("\nDone. Number of twin-nodes: " + getSize() / 2);
         }
     }
 
@@ -909,7 +906,7 @@ public class DBGraph {
         String inputFile = "/home/tohei/Data/ASAData/reads_complex.fasta";
         String outputFile = "/home/tohei/Data/ASAData/out_new.fasta";
 
-        System.out.print("Reading files ... ");
+        /*System.out.print("Reading files ... ");
         DNAString[] inputs = null;
         try {
             inputs = DNAStringUtils.readFasta(inputFile);
@@ -919,12 +916,12 @@ public class DBGraph {
             System.err.println("Failed to read input file.");
         }
         System.out.println("done.");
-        int k = 21;
+        int k = 21;*/
 
-       /* DNAString a = new DNAString("ACGTTGCA");
+        DNAString a = new DNAString("AACGTACGTAGGTACGTCG");
         DNAString[] inputs = {a};
         int k = 5;
-*/
+
         int cutoff = 2;
         if (inputs.length < 2) {
             cutoff = 0;

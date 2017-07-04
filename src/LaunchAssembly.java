@@ -25,7 +25,7 @@ public class LaunchAssembly {
             return;
         }
 
-        // read command line arguments
+        // parse k-mer size
         int k = 0;
         try {
             k = Integer.parseInt(args[2]);
@@ -38,9 +38,11 @@ public class LaunchAssembly {
             return;
         }
 
+        // read file names
         String inputFile = args[0];
         String outputFile = args[1];
 
+        // read in input fasta file
         DNAString[] inputs = null;
         System.out.print("Reading input file ... ");
         try {
@@ -53,13 +55,14 @@ public class LaunchAssembly {
         System.out.println("done.");
 
         if (args.length == 4) {
+            // find k-mer neighbors
             DNAString kmer = new DNAString(args[3]);
             if (kmer.length() != k) {
                 System.err.println("Invalid k-mer. k-mer has to be of specified length.");
                 return;
             }
             // solve task (a) manually (de Bruijn graph will be built on error corrected reads)
-            LinkedHashMap<DNAString, Integer> counts = DNAStringUtils.kmerCounts(inputs, k);
+            LinkedHashMap<DNAString, Integer> counts = DNAStringUtils.kmerCounts(inputs, k, false);
             System.out.print("Incoming k-mers - ");
             boolean hasEdge = false;
             for (DNAString s : kmer.subSequence(0, k - 1).allVariations(-1)) {
@@ -82,32 +85,32 @@ public class LaunchAssembly {
             System.out.println();
         }
 
-        // save k-mer counts
-        /*try {
-            String countfile = "/home/tohei/Downloads/counts.txt";
-			System.out.println(countfile);
-			SeqUtils.saveKmerCounts(countfile, SeqUtils.kmerCounts(inputs, k));
-		} catch (IOException e) {
-			e.printStackTrace();
-		}*/
-
-        int cutoff = inputs.length < 2 ? 1 : 2;
+        // TODO find cutoff
+        int cutoff = 2;
+        // error correction will only be used if there are at least two reads
+        boolean correctErrors = true;
+        if (inputs.length < 2) {
+            correctErrors = false;
+            cutoff = 0;
+        }
 
         System.out.println();
         System.out.println("Read error correction: ");
         ReadCorrector rcor = new ReadCorrector();
         rcor.setReads(inputs, k);
 
-        rcor.setCutoff(cutoff + 1);
-        rcor.computeSAC(true);
-        rcor.setCutoff(cutoff);
-        rcor.computeSAC(true);
-        rcor.computeBestReplacement(true);
+        if (correctErrors) {
+            rcor.setCutoff(cutoff + 1);
+            rcor.computeSAC(true);
+            rcor.setCutoff(cutoff);
+            rcor.computeSAC(true);
+            rcor.computeBestReplacement(true);
+        }
 
         System.out.println();
         DBGraph G = new DBGraph(inputs, rcor.getCounts(), k, true);
-        G.simplify(true, cutoff, true);
-        DNAString[] contigs = G.getSequences(true, k);
+        G.simplify(correctErrors, cutoff, true);
+        DNAString[] contigs = G.getSequences(true, 0);
 
         System.out.println();
         int max = G.getMaxSequenceLength();
@@ -115,7 +118,7 @@ public class LaunchAssembly {
         System.out.println("Avg contig length: " + G.getAvgSequenceLength());
         System.out.println();
 
-        // save
+        // save to output fasta
         System.out.print("Saving to " + outputFile + " ... ");
         try {
             DNAStringUtils.writeFasta(outputFile, contigs);

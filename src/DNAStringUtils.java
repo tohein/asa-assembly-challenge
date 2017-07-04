@@ -19,15 +19,16 @@ public final class DNAStringUtils {
     }
 
     /**
-     * Computes for every k-mer and its reverse complement the
+     * Computes for every k-mer (and its reverse complement, if includeRC = true) the
      * number of reads which contain them.
      * <p>
      *
      * @param reads array of reads.
      * @param k     k-mer length.
+     * @param includeRC count reverse complement.
      * @return LinkedHashSet mapping k-mers to counts.
      */
-    public static LinkedHashMap<DNAString, Integer> kmerCounts(DNAString[] reads, int k) {
+    public static LinkedHashMap<DNAString, Integer> kmerCounts(DNAString[] reads, int k, boolean includeRC) {
         LinkedHashMap<DNAString, Integer> kmerCounts = new LinkedHashMap<DNAString, Integer>(reads.length);
         for (DNAString s : reads) {
             // updated contains all k-mers found in read s
@@ -41,13 +42,26 @@ public final class DNAStringUtils {
                         count += kmerCounts.get(kmer);
                     }
                     kmerCounts.put(kmer, count);
-                    kmerCounts.put(kmerRC, count);
+                    if (includeRC) kmerCounts.put(kmerRC, count);
                 }
                 updated.add(kmer);
-                updated.add(kmerRC);
+                if (includeRC) updated.add(kmerRC);
             }
         }
         return kmerCounts;
+    }
+
+    /**
+     * Computes for every k-mer and its reverse complement the
+     * number of reads which contain them.
+     * <p>
+     *
+     * @param reads array of reads.
+     * @param k     k-mer length.
+     * @return LinkedHashSet mapping k-mers to counts.
+     */
+    public static LinkedHashMap<DNAString, Integer> kmerCounts(DNAString[] reads, int k) {
+        return kmerCounts(reads, k, true);
     }
 
     /**
@@ -152,11 +166,5 @@ public final class DNAStringUtils {
             }
         }
         return D[len1][len2];
-    }
-
-    public static void main(String[] args) {
-        DNAString s1 = new DNAString("hello");
-        DNAString s2 = new DNAString("hellooooo");
-        System.out.println(LevDistance(s1,s2));
     }
 }
