@@ -33,8 +33,8 @@ public class LaunchAssembly {
             System.err.println("Invalid k-mer size.");
             return;
         }
-        if (k % 2 == 1) {
-            System.err.println("k should be odd.");
+        if (k % 2 == 0 || k < 3) {
+            System.err.println("k should be odd integer >= 3.");
             return;
         }
 
@@ -42,6 +42,7 @@ public class LaunchAssembly {
         String outputFile = args[1];
 
         DNAString[] inputs = null;
+        System.out.print("Reading input file ... ");
         try {
             inputs = DNAStringUtils.readFasta(inputFile);
         } catch (FileNotFoundException e1) {
@@ -49,6 +50,7 @@ public class LaunchAssembly {
         } catch (IOException e2) {
             System.err.println("Failed to read input file.");
         }
+        System.out.println("done.");
 
         if (args.length == 4) {
             DNAString kmer = new DNAString(args[3]);
@@ -89,19 +91,23 @@ public class LaunchAssembly {
 			e.printStackTrace();
 		}*/
 
-        System.out.println("Error correction ....");
+        int cutoff = inputs.length < 2 ? 1 : 2;
+
+        System.out.println();
+        System.out.println("Read error correction: ");
         ReadCorrector rcor = new ReadCorrector();
         rcor.setReads(inputs, k);
 
-        rcor.setCutoff(3);
-        rcor.computeSAC(verbose);
-        rcor.setCutoff(2);
-        rcor.computeSAC(verbose);
+        rcor.setCutoff(cutoff + 1);
+        rcor.computeSAC(true);
+        rcor.setCutoff(cutoff);
+        rcor.computeSAC(true);
+        rcor.computeBestReplacement(true);
 
-        DBGraph G = new DBGraph(inputs, rcor.getCounts(), k, verbose);
-
-        G.simplify(true, 2, verbose);
-        DNAString[] contigs = G.getSequences();
+        System.out.println();
+        DBGraph G = new DBGraph(inputs, rcor.getCounts(), k, true);
+        G.simplify(true, cutoff, true);
+        DNAString[] contigs = G.getSequences(true, k);
 
         System.out.println();
         int max = G.getMaxSequenceLength();

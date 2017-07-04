@@ -1,6 +1,4 @@
-import java.util.Collections;
-import java.util.LinkedHashMap;
-import java.util.Map;
+import java.util.*;
 
 /**
  * Class for error correction of DNAString reads.
@@ -375,6 +373,79 @@ public class ReadCorrector {
     }
 
     /**
+     * Search for the most likely error in every read and look for the best replacement.
+     *
+     * @param verbose
+     * @return number of corrected reads.
+     */
+    public int computeBestReplacement(boolean verbose) {
+        long startTime = System.currentTimeMillis();
+        if (verbose) System.out.print("Computing best replacements (cutoff = " + cutoff + ") ... ");
+
+        int numOfRepl = 0;
+        for (int i = 0; i < reads.length; i++) {
+            DNAString read = reads[i];
+            // try to identify error by analyzing counts
+            float[] counts = new float[read.length()];
+            for (int j = 0; j < read.length() - k + 1; j++) {
+                DNAString v = read.subSequence(j, j + k);
+                int count = kmerCounts.get(v);
+                for (int l = j; l < j + k; l++) {
+                    counts[l] += count;
+                }
+            }
+            //adjust for lower counts at the sides by adding multiples of cell average
+            for (int j = 0; j < Math.min(k, read.length() / 2); j++) {
+                counts[j] += counts[j] / (float) (j + 1) * (k - j - 1);
+                int rightIdx = read.length() - 1 - j;
+                counts[rightIdx] += counts[rightIdx] / (float) (j + 1) * (k - j - 1);
+            }
+
+            // find minimum coverage position
+            int minIdx = 0;
+            for (int j = 1; j < counts.length; j++) {
+                if (counts[j] / (float) k < counts[minIdx] / (float) k) {
+                    minIdx = j;
+                }
+            }
+
+            // determine replacement leading to maximum change in coverage
+            if (counts[minIdx] / (float) k < cutoff) {
+                DNAString[] variations = read.allVariations(minIdx);
+                DNAString topRepl = read;
+                int topCount = 0;
+                for (DNAString var : variations) {
+                    // record change in coverage for affected positions
+                    int count = 0;
+                    for (int j = Math.max(0, minIdx - k + 1); j < Math.min(var.length() - k + 1, minIdx + k); j++) {
+                        DNAString r = read.subSequence(j, j + k);
+                        DNAString v = var.subSequence(j, j + k);
+                        if (kmerCounts.containsKey(v)) {
+                            count += kmerCounts.get(v);
+                        }
+                        count -= kmerCounts.get(r);
+                    }
+                    if (count > topCount) {
+                        topRepl = var;
+                        topCount = count;
+                    }
+                }
+                if (topCount > 0) {
+                    numOfRepl++;
+                    reads[i] = topRepl;
+                }
+            }
+        }
+        if (verbose) {
+            long endTime = System.currentTimeMillis();
+            System.out.println("done (" + (endTime - startTime) / 1000 + " seconds).");
+            System.out.println("(Total of " + numOfRepl + " replacements)");
+        }
+        kmerCounts = DNAStringUtils.kmerCounts(reads, k);
+        return numOfRepl;
+    }
+
+    /**
      * Find best Hamming neighbor of v.
      * <p>
      * Searches for the solid k-mer with the highest count which only differs in one base from v. If no such
@@ -403,16 +474,15 @@ public class ReadCorrector {
         for (int i = 0; i < reads.length; i++) {
             reads2[i] = new DNAString(reads[i]);
         }
-        System.out.println("Old reads:");
-        for (DNAString read : reads2) {
-            System.out.print(read.toString() + " ");
-        }
         ReadCorrector r = new ReadCorrector();
         r.setReads(reads2, 3);
+        System.out.println(Arrays.toString(reads2));
+        System.out.println(r.getCounts().toString());
         r.setCutoff(2);
-        r.computeSAC(true);
-        for (DNAString read : reads2) {
-            System.out.print(read.toString() + " ");
-        }
+        r.computeBestReplacement(true);
+        System.out.println(r.getCounts().toString());
+        System.out.println(Arrays.toString(reads2));
+
+
     }
 }

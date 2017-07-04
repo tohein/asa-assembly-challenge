@@ -155,20 +155,8 @@ public final class DNAStringUtils {
     }
 
     public static void main(String[] args) {
-        DNAString[] inputs = null;
-        try {
-            inputs = readFasta("/home/tohei/Data/ASAData/reads_complex.fasta");
-        } catch (FileNotFoundException e1) {
-            System.err.println("Could not find input file.");
-        } catch (IOException e2) {
-            System.err.println("Failed to read input file.");
-        }
-        int k = 21;
-        LinkedHashMap<DNAString, Integer> counts = kmerCounts(inputs, k);
-        System.out.println(counts.get(new DNAString("TGGCAGCTATCCTTCCGCTTT")));
-        DNAString weird = new DNAString("TGGCAGCTATTAAGATGTTAA");
-        System.out.println(counts.get(weird));
-        System.out.println(counts.get(weird.reverseComplement()));
-
+        DNAString s1 = new DNAString("hello");
+        DNAString s2 = new DNAString("hellooooo");
+        System.out.println(LevDistance(s1,s2));
     }
 }
