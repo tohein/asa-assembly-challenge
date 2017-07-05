@@ -12,6 +12,17 @@ import java.util.*;
 public class DBGraph {
 
     /**
+     * Maximum percentage of sequence length that is allowed to differ for
+     * bubble removal (in terms of edit distance)
+     */
+    private static final double MAX_BUBBLE_DIFF = 0.1;
+
+    /**
+     * Maximum length of bubble path.
+     */
+    private static final int MIN_BUBBLE_LEN = 150;
+
+    /**
      * Stores all nodes in the graph.
      */
     private LinkedHashMap<DNAString, DBGNode> nodesMap;
@@ -226,10 +237,10 @@ public class DBGraph {
          */
         @Override
         public String toString() {
-            String s = "[Node: " + seq + "]";
+            String s = "[Node: " + seq + "]" + " Cov: " + getCov();
             s = s + "\n Out:[";
             for (DBGEdge edge : outgoing) {
-                s = s + edge.target.seq.toString() + " ";
+                s = s + edge.target.seq.toString() + "[" + edge.multiplicity + "]" + " ";
             }
             s = s + "]";
             return s;
@@ -432,6 +443,47 @@ public class DBGraph {
     }
 
     /**
+     * Produces a hash map of all the DNAStrings (nodes) in this graph and their coverage.
+     *
+     * @return LinkedHashMap mapping DNAstrings to coverage.
+     */
+    public LinkedHashMap<DNAString, Integer> getCovData() {
+        LinkedHashMap<DNAString, Integer> counts = new LinkedHashMap<>(getSize() / 2);
+        for (DNAString nodeSeq : nodesMap.keySet()) {
+            DBGNode n = nodesMap.get(nodeSeq);
+            counts.put(nodeSeq, (int) Math.ceil(n.getCov()));
+        }
+        return counts;
+    }
+
+    /**
+     * Produces a SimpleVec vector holding all coverage values of nodes in this graph adjusted
+     * by node sizes.
+     * <p>
+     * For every DBGNode n in this graph, this methods adds n.getSize() entries containing its average
+     * coverage to the output array.
+     *
+     * @return node coverages amplified by node size.
+     */
+    public SimpleVec getAdjustedCovData() {
+        LinkedList<Double> counts = new LinkedList<>();
+        for (DNAString nodeSeq : nodesMap.keySet()) {
+            DBGNode n = nodesMap.get(nodeSeq);
+            for (int i = 0; i < n.getSize(); i++) {
+                counts.add((double) n.getCov());
+            }
+        }
+        double[] countsArray = new double[counts.size()];
+        int i = 0;
+        for (Double d : counts) {
+            countsArray[i] = d;
+            i++;
+        }
+        return new SimpleVec(countsArray);
+    }
+
+
+    /**
      * Find the length of the largest sequence.
      *
      * @return maximum sequence length.
@@ -496,7 +548,7 @@ public class DBGraph {
             if (n.getIndegree() == 1 && n.getOutdegree() == 1) {
                 if (n.outgoing.getFirst().target.getIndegree() > 1) {
                     if (n.twin.outgoing.getFirst().target.twin.getOutdegree() > 1) {
-                        if (n.getSize() < 150) simplePaths.add(n);
+                        if (n.getSize() < MIN_BUBBLE_LEN) simplePaths.add(n);
                     }
                 }
             }
@@ -598,7 +650,7 @@ public class DBGraph {
                     }
                     avgCoverage = avgCoverage / numOfNodes;
                     // if sequences are similar enough, delete the simple path.
-                    int maxDist = (int) (0.1 * Math.min(path.seq.length(), altSequence.length()));
+                    int maxDist = (int) (MAX_BUBBLE_DIFF * Math.min(path.seq.length(), altSequence.length()));
                     if (DNAStringUtils.LevDistance(path.seq, altSequence) < maxDist) {
                         if (avgCoverage > path.getCov()) {
                             removeBlock(path);
@@ -634,16 +686,16 @@ public class DBGraph {
             System.out.print("[" + (endTime - startTime) / 1000 + " seconds] ");
         }
         if (nodesToRemove.size() > 0) {
-            System.out.print("Graph size - before: " + getSize());
+            if (verbose) System.out.print("Graph size - before: " + getSize());
             for (DBGNode node : nodesToRemove) {
                 if (nodesMap.containsKey(node.seq)) {
                     removeBlock(node);
                 }
             }
-            System.out.println(", after: " + getSize());
+            if (verbose) System.out.println(", after: " + getSize());
             return true;
         } else {
-            System.out.println("No changes");
+            if (verbose) System.out.println("No changes");
             return false;
         }
     }
@@ -667,11 +719,18 @@ public class DBGraph {
             DBGNode n = nodesMap.get(nodeSeq);
             if (n.isTip()) {
                 DBGEdge pathFromTip;
-                if (n.getIndegree() == 1) pathFromTip = n.twin.outgoing.getFirst();
-                else pathFromTip = n.outgoing.getFirst();
-                for (DBGEdge edge : pathFromTip.target.outgoing) {
+                DBGNode junction;
+                if (n.getIndegree() == 1) {
+                    pathFromTip = n.twin.outgoing.getFirst();
+                    junction = pathFromTip.target.twin;
+                } else {
+                    pathFromTip = n.outgoing.getFirst();
+                    junction = pathFromTip.target;
+                }
+                for (DBGEdge edge : junction.outgoing) {
                     if (edge.multiplicity > pathFromTip.multiplicity) {
                         blocksToRemove.add(n);
+                        break;
                     }
                 }
             }
@@ -899,67 +958,5 @@ public class DBGraph {
         }
         s = s + "-----------------------------------\n";
         return s;
-    }
-
-
-    public static void main(String[] args) {
-        String inputFile = "/home/tohei/Data/ASAData/reads_complex.fasta";
-        String outputFile = "/home/tohei/Data/ASAData/out_new.fasta";
-
-        /*System.out.print("Reading files ... ");
-        DNAString[] inputs = null;
-        try {
-            inputs = DNAStringUtils.readFasta(inputFile);
-        } catch (FileNotFoundException e1) {
-            System.err.println("Could not find input file.");
-        } catch (IOException e2) {
-            System.err.println("Failed to read input file.");
-        }
-        System.out.println("done.");
-        int k = 21;*/
-
-        DNAString a = new DNAString("AACGTACGTAGGTACGTCG");
-        DNAString[] inputs = {a};
-        int k = 5;
-
-        int cutoff = 2;
-        if (inputs.length < 2) {
-            cutoff = 0;
-        }
-
-        System.out.println();
-        System.out.println("Read error correction: ");
-        ReadCorrector rcor = new ReadCorrector();
-        rcor.setReads(inputs, k);
-
-        rcor.setCutoff(cutoff + 1);
-        rcor.computeSAC(true);
-        rcor.setCutoff(cutoff);
-        rcor.computeSAC(true);
-        rcor.computeBestReplacement(true);
-
-        System.out.println();
-        DBGraph G = new DBGraph(inputs, rcor.getCounts(), k, true);
-        //System.out.println(G.toString());
-        G.simplify(true, cutoff, true);
-        //System.out.println(G.toString());
-        DNAString[] contigs = G.getSequences(false, k);
-
-        System.out.println();
-        int max = G.getMaxSequenceLength();
-        System.out.println("Max contig length: " + max);
-        System.out.println("Avg contig length: " + G.getAvgSequenceLength());
-        System.out.println();
-
-/*        // save
-        System.out.print("Saving to " + outputFile + " ... ");
-        try {
-            DNAStringUtils.writeFasta(outputFile, contigs);
-        } catch (IOException e) {
-            System.out.println();
-            System.err.println("Could not save to output file.");
-            return;
-        }
-        System.out.println("done.");*/
     }
 }
