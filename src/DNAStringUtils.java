@@ -29,7 +29,7 @@ public final class DNAStringUtils {
      * @return LinkedHashSet mapping k-mers to counts.
      */
     public static LinkedHashMap<DNAString, Integer> kmerCounts(DNAString[] reads, int k, boolean includeRC) {
-        LinkedHashMap<DNAString, Integer> kmerCounts = new LinkedHashMap<DNAString, Integer>(reads.length);
+        LinkedHashMap<DNAString, Integer> kmerCounts = new LinkedHashMap<>(reads.length);
         for (DNAString s : reads) {
             // updated contains all k-mers found in read s
             LinkedHashSet<DNAString> updated = new LinkedHashSet<DNAString>();
