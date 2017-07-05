@@ -26,7 +26,7 @@ public class LaunchAssembly {
         }
 
         // parse k-mer size
-        int k = 0;
+        int k;
         try {
             k = Integer.parseInt(args[2]);
         } catch (NumberFormatException e) {
@@ -61,8 +61,8 @@ public class LaunchAssembly {
                 System.err.println("Invalid k-mer. k-mer has to be of specified length.");
                 return;
             }
-            // solve task (a) manually (de Bruijn graph will be built on error corrected reads)
-            LinkedHashMap<DNAString, Integer> counts = DNAStringUtils.kmerCounts(inputs, k, false);
+            // solve task (a) manually (de Bruijn graph will be built on error corrected reads and their rc)
+            LinkedHashMap<DNAString, Integer> counts = DNAStringUtils.kmerCounts(inputs, k, true);
             System.out.print("Incoming k-mers - ");
             boolean hasEdge = false;
             for (DNAString s : kmer.subSequence(0, k - 1).allVariations(-1)) {
@@ -85,31 +85,50 @@ public class LaunchAssembly {
             System.out.println();
         }
 
-        // TODO find cutoff
-        int cutoff = 2;
-        // error correction will only be used if there are at least two reads
-        boolean correctErrors = true;
-        if (inputs.length < 2) {
-            correctErrors = false;
-            cutoff = 0;
-        }
+        ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+        System.out.println("\nPHASE I : CUTOFF - DETERMINATION\n");
 
-        System.out.println();
-        System.out.println("Read error correction: ");
         ReadCorrector rcor = new ReadCorrector();
         rcor.setReads(inputs, k);
-
-        if (correctErrors) {
-            rcor.setCutoff(cutoff + 1);
-            rcor.computeSAC(true);
-            rcor.setCutoff(cutoff);
-            rcor.computeSAC(true);
-            rcor.computeBestReplacement(true);
+        int cutoff;
+        boolean correctErrors;
+        // error correction will only be used if there are at least two reads
+        if (inputs.length < 2) {
+            System.out.println("(Single read. No error correction, cutoff = 0)");
+            correctErrors = false;
+            cutoff = 0;
+        } else {
+            // build de Bruijn graph without read error correction and coverage cutoff
+            correctErrors = true;
+            DBGraph G = new DBGraph(inputs, rcor.getCounts(), k, verbose);
+            G.simplify(true, 0, verbose);
+            // analyze k-mer distribution to find cutoff
+            CovCutoffFinder cutoffFinder = new CovCutoffFinder(G.getAdjustedCovData());
+            cutoff = cutoffFinder.findCutoff(verbose);
         }
-
         System.out.println();
-        DBGraph G = new DBGraph(inputs, rcor.getCounts(), k, true);
-        G.simplify(correctErrors, cutoff, true);
+
+        ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+        System.out.println("\nPHASE II : READ ERROR CORRECTION\n");
+
+        // correct reads using spectral alignment and the more conservative bestReplacement algorithm
+        if (correctErrors && cutoff > 0) {
+            rcor.setCutoff(cutoff + 1);
+            rcor.computeSAC(verbose);
+            rcor.setCutoff(cutoff);
+            rcor.computeSAC(verbose);
+            rcor.computeBestReplacement(verbose);
+        } else {
+            System.out.println("(No error correction)");
+        }
+        System.out.println();
+
+        ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+        System.out.println("\nPHASE III : BUILD DE BRUIJN GRAPH\n");
+
+        // rebuild de Bruijn graph on corrected reads and use coverage cutoff to obtain final contigs
+        DBGraph G = new DBGraph(inputs, rcor.getCounts(), k, verbose);
+        G.simplify(correctErrors, cutoff, verbose);
         DNAString[] contigs = G.getSequences(true, 0);
 
         System.out.println();
@@ -118,6 +137,7 @@ public class LaunchAssembly {
         System.out.println("Avg contig length: " + G.getAvgSequenceLength());
         System.out.println();
 
+        ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
         // save to output fasta
         System.out.print("Saving to " + outputFile + " ... ");
         try {
