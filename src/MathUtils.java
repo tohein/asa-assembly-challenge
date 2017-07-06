@@ -14,7 +14,7 @@ public class MathUtils {
      */
     public static long factorial(long x) {
         if (x < 0) throw new IllegalArgumentException("Input to factorial has to be positive.");
-        return (long) Math.round(gamma(x + 1));
+        return Math.round(gamma(x + 1));
     }
 
     /**

@@ -26,7 +26,7 @@ public class GPMixtureModel {
     /**
      * Smooth likelihood by this factor.
      */
-    private static double SMOOTHING_FACTOR = 0.2;
+    private static double SMOOTHING_FACTOR = 0.3;
 
     /**
      * Create new GPMixtureModel from the given parameters.
@@ -64,7 +64,7 @@ public class GPMixtureModel {
     /**
      * Get the standard deviation of the Gaussian component.
      *
-     * @return
+     * @return standard deviation of the Gaussian component.
      */
     public double getSigma() {
         return sigma;
@@ -160,7 +160,6 @@ public class GPMixtureModel {
         String s = "mu = " + String.format("%.4f", mu) + ", sigma = " + String.format("%.4f", sigma);
         s = s + "\nlambda = " + String.format("%.4f", lambda);
         s = s + "\nMixing proportions: " + String.format("%.3f", mixProp);
-        ;
         return s;
     }
 }

@@ -1,5 +1,4 @@
 import java.io.BufferedReader;
-import java.io.FileNotFoundException;
 import java.io.FileReader;
 import java.io.IOException;
 import java.io.PrintWriter;
@@ -32,7 +31,7 @@ public final class DNAStringUtils {
         LinkedHashMap<DNAString, Integer> kmerCounts = new LinkedHashMap<>(reads.length);
         for (DNAString s : reads) {
             // updated contains all k-mers found in read s
-            LinkedHashSet<DNAString> updated = new LinkedHashSet<DNAString>();
+            LinkedHashSet<DNAString> updated = new LinkedHashSet<>();
             for (int i = 0; i < s.length() - k + 1; i++) {
                 DNAString kmer = s.subSequence(i, i + k);
                 DNAString kmerRC = kmer.reverseComplement();
@@ -69,13 +68,12 @@ public final class DNAStringUtils {
      *
      * @param fileName String containing full path to FASTA file.
      * @return DNAString array containing reads.
-     * @throws FileNotFoundException
      * @throws IOException
      */
-    public static DNAString[] readFasta(String fileName) throws FileNotFoundException, IOException {
+    public static DNAString[] readFasta(String fileName) throws IOException {
         String line;
         BufferedReader in = new BufferedReader(new FileReader(fileName));
-        ArrayList<DNAString> sequences = new ArrayList<DNAString>();
+        ArrayList<DNAString> sequences = new ArrayList<>();
         String seq = "";
         while ((line = in.readLine()) != null) {
             if (line.startsWith(">")) {
@@ -99,7 +97,6 @@ public final class DNAStringUtils {
      *
      * @param fileName path to output file.
      * @param reads    DNAString array containing reads.
-     * @throws FileNotFoundException
      * @throws IOException
      */
     public static void writeFasta(String fileName, DNAString[] reads) throws IOException {

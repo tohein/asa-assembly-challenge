@@ -8,6 +8,7 @@ import java.util.*;
  * (1) Majority Alignment Correction (MAC) - correction by majority vote
  * (2) Consensus Alignment Correction (CAC) - like MAC, but relying on unanimous consensus
  * (3) Spectral Alignment Correction (SAC) - basic spectral alignment
+ * (4) Best Replacement - correct most likely error.
  * <p>
  * Created by tohei on 6/26/17.
  */
