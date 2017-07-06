@@ -33,6 +33,13 @@ where
 
 *   `[k-mer]` - (optional) print incoming and outgoing k-mers of [k-mer]
 
+# Compilation
+From project directory
+
+    mkdir bin
+
+    javac -classpath src/ src/LaunchAssembly.java -d bin
+
 # JDK
 Java SE Development Kit 8, Update 131 (JDK 8u131).
 
