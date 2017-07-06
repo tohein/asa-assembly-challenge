@@ -2,6 +2,9 @@ import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.util.LinkedHashMap;
 
+/**
+ * Start de novo assembly using de Bruijn graphs.
+ */
 public class LaunchAssembly {
 
     public static void main(String args[]) {
