@@ -86,59 +86,68 @@ public class LaunchAssembly {
         }
 
         ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-        System.out.println("\nPHASE I : CUTOFF - DETERMINATION\n");
-
         ReadCorrector rcor = new ReadCorrector();
         rcor.setReads(inputs, k);
-        int cutoff;
-        boolean correctErrors;
-        // error correction will only be used if there are at least two reads
+        DBGraph G = null;
         if (inputs.length < 2) {
-            System.out.println("(Single read. No error correction, cutoff = 0)");
-            correctErrors = false;
-            cutoff = 0;
+            // error correction will only be used if there are at least two reads
+            System.out.println("(single read -> no error correction, cutoff = 0)");
+            System.out.println("BUILD DE BRUIJN GRAPH");
+            G = new DBGraph(inputs, rcor.getCounts(), k, verbose);
+            G.simplify(false, 0, verbose);
         } else {
+            ////////////////////////////////////////////////////////////////////////////////////////////////////////////
+            System.out.println("\nPHASE I : AUTO CUTOFF DETECTION (this might take a while)\n");
             // build de Bruijn graph without read error correction and coverage cutoff
-            correctErrors = true;
-            DBGraph G = new DBGraph(inputs, rcor.getCounts(), k, verbose);
+            G = new DBGraph(inputs, rcor.getCounts(), k, verbose);
             G.simplify(true, 0, verbose);
+            System.out.println();
             // analyze k-mer distribution to find cutoff
             CovCutoffFinder cutoffFinder = new CovCutoffFinder(G.getAdjustedCovData());
-            cutoff = cutoffFinder.findCutoff(verbose);
+            int cutoff = 2;
+            try {
+                cutoff = cutoffFinder.findCutoff(verbose);
+            } catch (Exception e) {
+                e.printStackTrace();
+                System.out.println("\nFailed to determine cutoff. Use default cutoff: 2");
+            }
+
+            ////////////////////////////////////////////////////////////////////////////////////////////////////////////
+            System.out.println("\nPHASE II : READ ERROR CORRECTION\n");
+
+            // correct reads using spectral alignment and the more conservative bestReplacement algorithm
+            if (cutoff > 0) {
+                rcor.setCutoff(cutoff + 1);
+                rcor.computeSAC(verbose);
+                rcor.setCutoff(cutoff);
+                rcor.computeSAC(verbose);
+                rcor.computeBestReplacement(verbose);
+            } else {
+                System.out.println("(no read error correction)");
+            }
+
+            ////////////////////////////////////////////////////////////////////////////////////////////////////////////
+            System.out.println("\nPHASE III : BUILD FINAL DE BRUIJN GRAPH\n");
+            if (cutoff > 0) {
+                // rebuild de Bruijn graph on corrected reads and use coverage cutoff to obtain final contigs
+                G = new DBGraph(inputs, rcor.getCounts(), k, verbose);
+                G.simplify(true, cutoff, verbose);
+            } else {
+                System.out.println("(no re-build necessary)");
+            }
         }
-        System.out.println();
 
         ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-        System.out.println("\nPHASE II : READ ERROR CORRECTION\n");
+        // display summary and save output to fasta
 
-        // correct reads using spectral alignment and the more conservative bestReplacement algorithm
-        if (correctErrors && cutoff > 0) {
-            rcor.setCutoff(cutoff + 1);
-            rcor.computeSAC(verbose);
-            rcor.setCutoff(cutoff);
-            rcor.computeSAC(verbose);
-            rcor.computeBestReplacement(verbose);
-        } else {
-            System.out.println("(No error correction)");
-        }
-        System.out.println();
-
-        ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-        System.out.println("\nPHASE III : BUILD DE BRUIJN GRAPH\n");
-
-        // rebuild de Bruijn graph on corrected reads and use coverage cutoff to obtain final contigs
-        DBGraph G = new DBGraph(inputs, rcor.getCounts(), k, verbose);
-        G.simplify(correctErrors, cutoff, verbose);
+        System.out.println("\nSUMMARY\n");
         DNAString[] contigs = G.getSequences(true, 0);
-
-        System.out.println();
         int max = G.getMaxSequenceLength();
+        System.out.println("Number of contigs: " + G.getSize() / 2);
         System.out.println("Max contig length: " + max);
         System.out.println("Avg contig length: " + G.getAvgSequenceLength());
         System.out.println();
 
-        ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-        // save to output fasta
         System.out.print("Saving to " + outputFile + " ... ");
         try {
             DNAStringUtils.writeFasta(outputFile, contigs);

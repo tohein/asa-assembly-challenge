@@ -24,6 +24,11 @@ public class GPMixtureModel {
     private double mixProp;
 
     /**
+     * Smooth likelihood by this factor.
+     */
+    private static double SMOOTHING_FACTOR = 0.2;
+
+    /**
      * Create new GPMixtureModel from the given parameters.
      *
      * @param lambda  expected value of the Poisson component.
@@ -80,32 +85,37 @@ public class GPMixtureModel {
      * This method uses the expectation maximization algorithm to optimize the set of parameters
      * for the given data.
      *
-     * @param vecData SimpleVec containing data points.
-     * @param eps     the algorithm terminates if the difference in log-likelihood between two iterations
-     *                is below eps.
-     * @param maxIter maximum number of iterations.
-     * @param verbose be verbose.
+     * @param vecData    SimpleVec containing data points.
+     * @param eps        the algorithm terminates if the difference in log-likelihood between two iterations
+     *                   is below eps.
+     * @param maxIter    maximum number of iterations.
+     * @param sampleProb percentage of data points used for every iteration.
+     * @param verbose    be verbose.
      */
-    public void expectationMaximization(SimpleVec vecData, double eps, int maxIter, boolean verbose) {
+    public void expectationMaximization(SimpleVec vecData, double eps, int maxIter, float sampleProb, boolean verbose) {
         int iter = 0;
-        float batchSize = Math.min(100000 / vecData.length(), 1);
+        double oldLikelihood = 0, newLikelihood = 0;
 
-        if (verbose) System.out.println("Starting EM-algorithm ... ");
+        if (verbose) System.out.println("Starting EM-algorithm (sample probability: " + sampleProb + ") ... ");
         while (iter < maxIter) {
             // sample from data
-            SimpleVec vec = vecData.sample(batchSize);
+            SimpleVec vec = vecData.sample(sampleProb);
             iter++;
-            double oldLikelihood = logLikelihood(vec);
+            if (iter == 1) {
+                oldLikelihood = logLikelihood(vec);
+            } else {
+                oldLikelihood = newLikelihood;
+            }
             if (verbose) {
                 System.out.println("\t------------ Iteration " + iter + " ------------");
                 System.out.println(toString());
-                System.out.println("log-likelihood (before): " + oldLikelihood);
+                System.out.println("smoothed likelihood (before): " + oldLikelihood);
             }
 
             //expectation step
-            SimpleVec y1 = normalDensity(vec, mu, sigma).times(mixProp);
-            SimpleVec y2 = poissonDensity(vec, lambda).times(1 - mixProp);
-            y2 = y2.add(normalDensity(vec, mu, sigma).times(mixProp));
+            SimpleVec y1 = MathUtils.normalDensity(vec, mu, sigma).times(mixProp);
+            SimpleVec y2 = MathUtils.poissonDensity(vec, lambda).times(1 - mixProp);
+            y2 = y2.add(MathUtils.normalDensity(vec, mu, sigma).times(mixProp));
             SimpleVec y = y1.div(y2);
 
             //maximization step
@@ -119,8 +129,9 @@ public class GPMixtureModel {
 
             mixProp = MathUtils.sum(y) / vec.length();
 
-            double newLikelihood = logLikelihood(vec);
-            if (verbose) System.out.println("log-likelihood (after) : " + newLikelihood);
+            double likelihood = logLikelihood(vec);
+            newLikelihood = SMOOTHING_FACTOR * oldLikelihood + (1 - SMOOTHING_FACTOR) * likelihood;
+            if (verbose) System.out.println("log-likelihood      (after) : " + newLikelihood);
             if (Math.abs(oldLikelihood - newLikelihood) < eps) {
                 break;
             }
@@ -134,65 +145,9 @@ public class GPMixtureModel {
      * @return log-likelihood of current parameters (instance variables).
      */
     public double logLikelihood(SimpleVec vec) {
-        SimpleVec out = poissonDensity(vec, lambda).times(1 - mixProp);
-        out = out.add(normalDensity(vec, mu, sigma).times(mixProp));
+        SimpleVec out = MathUtils.poissonDensity(vec, lambda).times(1 - mixProp);
+        out = out.add(MathUtils.normalDensity(vec, mu, sigma).times(mixProp));
         return MathUtils.sum(MathUtils.logVec(out)) / vec.length();
-    }
-
-    /**
-     * Evaluate a Poisson density function at all entries in vec.
-     *
-     * @param vec    SimpleVec data vector.
-     * @param lambda expected value of the Poisson distribution.
-     * @return new SimpleVec containing the values of the Gaussian density function evaluated at all points in vec.
-     */
-    public static SimpleVec poissonDensity(SimpleVec vec, double lambda) {
-        double[] out = new double[vec.length()];
-        for (int i = 0; i < vec.length(); i++) {
-            out[i] = poissonDensity(vec.get(i), lambda);
-        }
-        return new SimpleVec(out);
-    }
-
-    /**
-     * Evaluate a Poisson density function at the given point.
-     *
-     * @param x      point to evaluate.
-     * @param lambda expected value of the Poisson distribution.
-     * @return Poisson density at x.
-     */
-    public static double poissonDensity(double x, double lambda) {
-        int k = (int) x;
-        return Math.pow(lambda, k) * Math.exp(-lambda) / MathUtils.factorial(k);
-    }
-
-    /**
-     * Evaluate a normal density function at all entries in vec.
-     *
-     * @param vec   SimpleVec data vector.
-     * @param mu    expected value.
-     * @param sigma standard deviation.
-     * @return new SimpleVec containing the values of the Gaussian density function evaluated at all points in vec.
-     */
-    public static SimpleVec normalDensity(SimpleVec vec, double mu, double sigma) {
-        double[] out = new double[vec.length()];
-        for (int i = 0; i < vec.length(); i++) {
-            out[i] = normalDensity(vec.get(i), mu, sigma);
-        }
-        return new SimpleVec(out);
-    }
-
-    /**
-     * Evaluate a normal density function at a given point.
-     *
-     * @param x     point to evaluate.
-     * @param mu    expected value.
-     * @param sigma standard deviation.
-     * @return normal density at x.
-     */
-    public static double normalDensity(double x, double mu, double sigma) {
-        double c = 1 / Math.sqrt(2 * Math.PI * Math.pow(sigma, 2));
-        return c * Math.exp(-Math.pow(x - mu, 2) / (2 * Math.pow(sigma, 2)));
     }
 
     /**
