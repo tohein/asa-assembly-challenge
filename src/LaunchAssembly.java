@@ -65,7 +65,7 @@ public class LaunchAssembly {
                 return;
             }
             // solve task (a) manually (de Bruijn graph will be built on error corrected reads and their rc)
-            LinkedHashMap<DNAString, Integer> counts = DNAStringUtils.kmerCounts(inputs, k, true);
+            LinkedHashMap<DNAString, Integer> counts = DNAStringUtils.kmerCounts(inputs, k, false);
             System.out.print("Incoming k-mers - ");
             boolean hasEdge = false;
             for (DNAString s : kmer.subSequence(0, k - 1).allVariations(-1)) {
