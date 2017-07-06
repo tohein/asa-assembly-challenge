@@ -37,7 +37,7 @@ public class CovCutoffFinder {
     }
 
     /**
-     * Main method. Find a suitable coverage cutoff using a Gauss-Poisson mixture model.
+     * Find a suitable coverage cutoff using a Gauss-Poisson mixture model.
      *
      * @param verbose be verbose.
      * @return coverage cutoff.
